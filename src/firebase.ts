@@ -5,6 +5,10 @@ import {
   GoogleAuthProvider, 
   signOut as fbSignOut, 
   onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -93,6 +97,10 @@ testConnection();
 
 export { 
   signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
   fbSignOut, 
   onAuthStateChanged,
   collection, 

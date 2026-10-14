@@ -20,6 +20,10 @@ import {
   auth, 
   googleProvider, 
   signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
   fbSignOut, 
   onAuthStateChanged, 
   db, 
@@ -29,7 +33,8 @@ import {
   getDocFromServer,
   onSnapshot,
   handleFirestoreError,
-  OperationType
+  OperationType,
+  FirebaseUser
 } from '../firebase';
 import { soundEngine } from '../utils/audio';
 
@@ -42,7 +47,32 @@ const STORAGE_KEYS = {
   THEME: 'orbita_app_theme_v2',
   ACCENT: 'orbita_accent_color_v2',
   BG_COLOR: 'orbita_bg_color_v2',
+  ACCOUNTS: 'orbita_registered_accounts_v2',
 };
+
+interface RegisteredAccount {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name: string;
+  createdAt: string;
+  profile: UserProfile;
+}
+
+async function hashPassword(password: string): Promise<string> {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(`orb_salt_${password}`);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch {
+    // fallback
+  }
+  return btoa(`orb_${password}`);
+}
 
 function loadStorage<T>(key: string, fallback: T): T {
   try {
@@ -172,10 +202,18 @@ interface OrbitaContextType {
 
   // Modals
   authModalOpen: boolean;
+  authModalMode: 'login' | 'register';
+  openAuthModal: (mode?: 'login' | 'register') => void;
+  setAuthModalOpen: (open: boolean) => void;
+  setAuthModalMode: (mode: 'login' | 'register') => void;
   profileModalOpen: boolean;
+  setProfileModalOpen: (open: boolean) => void;
   serverSettingsOpen: boolean;
+  setServerSettingsOpen: (open: boolean) => void;
   inviteModalOpen: boolean;
+  setInviteModalOpen: (open: boolean) => void;
   soundboardModalOpen: boolean;
+  setSoundboardModalOpen: (open: boolean) => void;
 
   // Participant Moderation & Context Menu Actions
   userVolumes: Record<string, number>;
@@ -204,11 +242,6 @@ interface OrbitaContextType {
   setCustomBgColor: (color: string) => void;
   toggleLeftSidebar: () => void;
   toggleRightSidebar: () => void;
-  setAuthModalOpen: (open: boolean) => void;
-  setProfileModalOpen: (open: boolean) => void;
-  setServerSettingsOpen: (open: boolean) => void;
-  setInviteModalOpen: (open: boolean) => void;
-  setSoundboardModalOpen: (open: boolean) => void;
   toggleTranscription: () => void;
   
   // Chat Actions
@@ -244,6 +277,9 @@ interface OrbitaContextType {
   updateServerRoles: (roles: ServerRole[]) => void;
   
   // Auth & Profile
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  registerWithEmail: (email: string, password: string, name?: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (updates: Partial<UserProfile>) => void;
@@ -262,6 +298,12 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   );
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
+
+  const openAuthModal = useCallback((mode: 'login' | 'register' = 'login') => {
+    setAuthModalMode(mode);
+    setAuthModalOpen(true);
+  }, []);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -1225,82 +1267,251 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [currentServerId]);
 
-  // Auth: Google Sign-In with Gmail
-  const loginWithGoogle = useCallback(async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const fbUser = result.user;
-      
-      const newProf: UserProfile = {
+  // Helper to sync user state & servers after any auth success
+  const syncUserAfterAuth = useCallback(async (fbUser: FirebaseUser, fallbackName?: string) => {
+    // Check if user already has servers and profile saved in Firestore
+    const userRef = doc(db, 'users', fbUser.uid);
+    const userDocSnap = await getDocFromServer(userRef).catch(() => null);
+
+    let targetServers: ServerData[] = [];
+    let userProfile: UserProfile;
+
+    if (userDocSnap && userDocSnap.exists()) {
+      const data = userDocSnap.data();
+      userProfile = {
         id: fbUser.uid,
-        name: fbUser.displayName || 'Usuário Orb',
-        tag: `${(fbUser.displayName || 'usuario').toLowerCase().replace(/\s+/g, '')}#${fbUser.uid.substring(0, 4)}`,
+        name: data.name || fbUser.displayName || fallbackName || 'Usuário Orb',
+        tag: data.tag || `${(data.name || fbUser.displayName || fallbackName || 'usuario').toLowerCase().replace(/\s+/g, '')}#${fbUser.uid.substring(0, 4)}`,
+        email: fbUser.email || '',
+        avatarUrl: data.avatarUrl || fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${fbUser.uid}`,
+        bannerUrl: data.bannerUrl || 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
+        bio: data.bio !== undefined ? data.bio : 'Membro do Orb.co.',
+        status: data.status || 'online',
+        customStatus: data.customStatus || '',
+        ping: 18,
+        badges: data.badges || ['👑 Dono', '⭐ Orb.co'],
+        role: data.role || 'owner',
+        connectedAccounts: data.connectedAccounts || {},
+      };
+
+      if (Array.isArray(data.servers) && data.servers.length > 0) {
+        targetServers = data.servers;
+      } else {
+        const localServers = loadStorage<ServerData[]>(STORAGE_KEYS.SERVERS, []);
+        targetServers = localServers;
+      }
+
+      if (data.theme) {
+        setAppThemeState(data.theme);
+        saveStorage(STORAGE_KEYS.THEME, data.theme);
+      }
+      if (data.accentColor) {
+        setCustomAccentColorState(data.accentColor);
+        saveStorage(STORAGE_KEYS.ACCENT, data.accentColor);
+      }
+    } else {
+      const displayName = fallbackName || fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Usuário Orb');
+      userProfile = {
+        id: fbUser.uid,
+        name: displayName,
+        tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${fbUser.uid.substring(0, 4)}`,
         email: fbUser.email || '',
         bio: 'Membro do Orb.co.',
-        avatarUrl: fbUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop',
+        avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${fbUser.uid}`,
         bannerUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
         status: 'online',
         ping: 18,
         badges: ['👑 Dono', '⭐ Orb.co'],
         role: 'owner',
       };
+      const localServers = loadStorage<ServerData[]>(STORAGE_KEYS.SERVERS, []);
+      targetServers = localServers;
+    }
 
-      setCurrentUser(newProf);
-      saveStorage(STORAGE_KEYS.USER, newProf);
+    setCurrentUser(userProfile);
+    saveStorage(STORAGE_KEYS.USER, userProfile);
 
-      // Check if user already has servers saved in Firestore
-      const userRef = doc(db, 'users', fbUser.uid);
-      const userDocSnap = await getDocFromServer(userRef).catch(() => null);
+    // Save user profile and servers to their Firestore account
+    await setDoc(userRef, {
+      ...cleanFirestorePayload(userProfile),
+      servers: cleanFirestorePayload(targetServers)
+    }, { merge: true }).catch(err => {
+      handleFirestoreError(err, OperationType.WRITE, `users/${fbUser.uid}`);
+    });
 
-      let targetServers: ServerData[] = [];
-      if (userDocSnap && userDocSnap.exists() && Array.isArray(userDocSnap.data().servers) && userDocSnap.data().servers.length > 0) {
-        targetServers = userDocSnap.data().servers;
-      } else {
-        // If not in Firestore yet, preserve any servers created locally in this session:
-        const localServers = loadStorage<ServerData[]>(STORAGE_KEYS.SERVERS, []);
-        targetServers = localServers;
-      }
+    // Also ensure any servers owned by user are registered in /servers collection
+    for (const srv of targetServers) {
+      const srvDoc = doc(db, 'servers', srv.id);
+      setDoc(srvDoc, cleanFirestorePayload({
+        id: srv.id,
+        name: srv.name,
+        iconUrl: srv.iconUrl,
+        ownerId: fbUser.uid,
+        themeColor: srv.accentColor,
+        description: srv.description || '',
+        createdAt: new Date().toISOString()
+      }), { merge: true }).catch(() => {});
+    }
 
-      // Save user profile and servers to their Firestore account
-      await setDoc(userRef, {
-        ...cleanFirestorePayload(newProf),
-        servers: cleanFirestorePayload(targetServers)
-      }, { merge: true }).catch(err => {
-        handleFirestoreError(err, OperationType.WRITE, `users/${fbUser.uid}`);
-      });
+    setServers(targetServers);
+    saveStorage(STORAGE_KEYS.SERVERS, targetServers);
 
-      // Also ensure any servers owned by user are registered in /servers collection
-      for (const srv of targetServers) {
-        const srvDoc = doc(db, 'servers', srv.id);
-        setDoc(srvDoc, cleanFirestorePayload({
-          id: srv.id,
-          name: srv.name,
-          iconUrl: srv.iconUrl,
-          ownerId: fbUser.uid,
-          themeColor: srv.accentColor,
-          description: srv.description || '',
-          createdAt: new Date().toISOString()
-        }), { merge: true }).catch(() => {});
-      }
+    if (targetServers.length > 0) {
+      setCurrentServerIdState(targetServers[0].id);
+      setNavigationMode('server');
+    } else {
+      setCurrentServerIdState(null);
+      setNavigationMode('friends');
+    }
 
-      setServers(targetServers);
-      saveStorage(STORAGE_KEYS.SERVERS, targetServers);
+    isInitialFirestoreSyncDone.current = true;
+    setAuthModalOpen(false);
+    setActiveView('app');
+  }, []);
 
-      if (targetServers.length > 0) {
-        setCurrentServerIdState(targetServers[0].id);
-        setNavigationMode('server');
-      } else {
-        setCurrentServerIdState(null);
-        setNavigationMode('friends');
-      }
-
-      isInitialFirestoreSyncDone.current = true;
-      setAuthModalOpen(false);
-      setActiveView('app');
+  // Auth: Email & Password Login
+  const loginWithEmail = useCallback(async (email: string, password: string) => {
+    const cleanEmail = email.trim();
+    try {
+      const result = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      await syncUserAfterAuth(result.user);
+      return;
     } catch (err) {
-      console.error('Google Sign In failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('auth/operation-not-allowed')) {
+        throw err;
+      }
+    }
+
+    // Fallback: Check local registered accounts registry
+    const accounts = loadStorage<RegisteredAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
+    const normalizedEmail = cleanEmail.toLowerCase();
+    const found = accounts.find(a => a.email.toLowerCase() === normalizedEmail);
+    if (!found) {
+      throw new Error('auth/user-not-found');
+    }
+
+    const hash = await hashPassword(password);
+    if (found.passwordHash !== hash) {
+      throw new Error('auth/wrong-password');
+    }
+
+    // Successfully verified! Log in user
+    setCurrentUser(found.profile);
+    saveStorage(STORAGE_KEYS.USER, found.profile);
+
+    const localServers = loadStorage<ServerData[]>(STORAGE_KEYS.SERVERS, INITIAL_SERVERS);
+    setServers(localServers);
+    if (localServers.length > 0) {
+      setCurrentServerIdState(localServers[0].id);
+      setNavigationMode('server');
+    } else {
+      setCurrentServerIdState(null);
+      setNavigationMode('friends');
+    }
+
+    setAuthModalOpen(false);
+    setActiveView('app');
+  }, [syncUserAfterAuth]);
+
+  // Auth: Email & Password Registration
+  const registerWithEmail = useCallback(async (email: string, password: string, name?: string) => {
+    const cleanEmail = email.trim();
+    try {
+      const result = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      if (name && name.trim()) {
+        await updateProfile(result.user, { displayName: name.trim() }).catch(() => {});
+      }
+      await syncUserAfterAuth(result.user, name?.trim());
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes('auth/operation-not-allowed')) {
+        throw err;
+      }
+    }
+
+    // Fallback: Register in local accounts registry
+    const accounts = loadStorage<RegisteredAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
+    const normalizedEmail = cleanEmail.toLowerCase();
+    if (accounts.some(a => a.email.toLowerCase() === normalizedEmail)) {
+      throw new Error('auth/email-already-in-use');
+    }
+
+    const localUid = `usr_${Math.random().toString(36).substring(2, 9)}`;
+    const displayName = name?.trim() || cleanEmail.split('@')[0];
+    const hash = await hashPassword(password);
+
+    const newProf: UserProfile = {
+      id: localUid,
+      name: displayName,
+      tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${localUid.substring(4, 8)}`,
+      email: cleanEmail,
+      bio: 'Membro do Orb.co.',
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${localUid}`,
+      bannerUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
+      status: 'online',
+      ping: 18,
+      badges: ['👑 Dono', '⭐ Orb.co'],
+      role: 'owner',
+    };
+
+    accounts.push({
+      id: localUid,
+      email: cleanEmail,
+      passwordHash: hash,
+      name: displayName,
+      createdAt: new Date().toISOString(),
+      profile: newProf,
+    });
+
+    saveStorage(STORAGE_KEYS.ACCOUNTS, accounts);
+    setCurrentUser(newProf);
+    saveStorage(STORAGE_KEYS.USER, newProf);
+
+    const localServers = loadStorage<ServerData[]>(STORAGE_KEYS.SERVERS, INITIAL_SERVERS);
+    setServers(localServers);
+    if (localServers.length > 0) {
+      setCurrentServerIdState(localServers[0].id);
+      setNavigationMode('server');
+    } else {
+      setCurrentServerIdState(null);
+      setNavigationMode('friends');
+    }
+
+    setAuthModalOpen(false);
+    setActiveView('app');
+  }, [syncUserAfterAuth]);
+
+  // Auth: Password Reset Email
+  const resetPassword = useCallback(async (email: string) => {
+    const cleanEmail = email.trim();
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('auth/operation-not-allowed')) {
+        const accounts = loadStorage<RegisteredAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
+        const found = accounts.find(a => a.email.toLowerCase() === cleanEmail.toLowerCase());
+        if (!found) {
+          throw new Error('auth/user-not-found');
+        }
+        return;
+      }
+      throw err;
     }
   }, []);
+
+  // Auth: Google Sign-In with Gmail
+  const loginWithGoogle = useCallback(async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      await syncUserAfterAuth(result.user);
+    } catch (err) {
+      console.error('Google Sign In failed:', err);
+      throw err;
+    }
+  }, [syncUserAfterAuth]);
 
   // Auth: Logout
   const logout = useCallback(async () => {
@@ -1435,6 +1646,9 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCustomBgColor,
       toggleLeftSidebar,
       toggleRightSidebar,
+      authModalMode,
+      setAuthModalMode,
+      openAuthModal,
       setAuthModalOpen,
       setProfileModalOpen,
       setServerSettingsOpen,
@@ -1468,6 +1682,9 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updateServerTheme,
       updateServerRoles,
 
+      loginWithEmail,
+      registerWithEmail,
+      resetPassword,
       loginWithGoogle,
       logout,
       updateUserProfile,

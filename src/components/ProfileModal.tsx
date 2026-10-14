@@ -208,8 +208,14 @@ export const ProfileModal: React.FC = () => {
               <span>Privacidade</span>
             </button>
 
-            {/* Logout Button */}
-            <div className="pt-4 mt-4 border-t border-white/5">
+            {/* Logout Button & Account Info */}
+            <div className="pt-4 mt-4 border-t border-white/5 space-y-2">
+              {currentUser.email && (
+                <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/5 text-[11px] text-slate-400">
+                  <span className="block text-[10px] uppercase font-bold text-slate-500">Conta Autenticada</span>
+                  <span className="text-slate-300 font-medium truncate block">{currentUser.email}</span>
+                </div>
+              )}
               <button
                 onClick={logout}
                 className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition-colors text-left cursor-pointer"
