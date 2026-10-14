@@ -35,6 +35,7 @@ export const FriendsView: React.FC = () => {
     currentDirectMessages, 
     sendDirectMessage,
     startPrivateCall,
+    callFriend,
     currentUser
   } = useOrbita();
 
@@ -152,12 +153,12 @@ export const FriendsView: React.FC = () => {
             {/* Actions */}
             <div className="flex items-center gap-2">
               <button
-                onClick={() => startPrivateCall(activeFriend)}
+                onClick={() => callFriend(activeFriend)}
                 className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md shadow-emerald-500/10"
-                title="Iniciar chamada de voz"
+                title={`Ligar diretamente para ${activeFriend.name}`}
               >
                 <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Ligar</span>
+                <span>Ligar Agora</span>
               </button>
 
               <button
@@ -302,6 +303,24 @@ export const FriendsView: React.FC = () => {
               <span>{addFeedback.message}</span>
             </div>
           )}
+
+          {/* Quick Friend Suggestions */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-400">
+            <span className="font-semibold text-slate-500">Sugestões rápidas:</span>
+            {['Gabriel#1092', 'Julia#4412', 'Rodrigo#7819', 'Fernanda#3201'].map(suggested => (
+              <button
+                key={suggested}
+                type="button"
+                onClick={() => {
+                  setFriendInput(suggested);
+                  addFriend(suggested);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 border border-white/10 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <span>+ {suggested}</span>
+              </button>
+            ))}
+          </div>
         </form>
 
         {/* Section Counter: "3 ONLINE AGORA" */}
@@ -382,10 +401,10 @@ export const FriendsView: React.FC = () => {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      startPrivateCall(friend);
+                      callFriend(friend);
                     }}
-                    className="w-10 h-10 rounded-2xl bg-white/[0.05] hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer shadow-sm border border-white/[0.08]"
-                    title={`Ligar para ${friend.name}`}
+                    className="w-10 h-10 rounded-2xl bg-white/[0.05] hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer shadow-sm border border-white/[0.08]"
+                    title={`Ligar diretamente para ${friend.name}`}
                   >
                     <Phone className="w-4 h-4" />
                   </button>

@@ -15,7 +15,7 @@ import {
   ScreenShareStream,
   ScreenLayoutMode
 } from '../types';
-import { DEFAULT_CLEAN_USER, INITIAL_SERVERS, INITIAL_CHAT_MESSAGES, INITIAL_FRIENDS } from '../data/mockData';
+import { DEFAULT_CLEAN_USER, INITIAL_SERVERS, INITIAL_CHAT_MESSAGES, INITIAL_FRIENDS, PUBLIC_COMMUNITY_SERVERS } from '../data/mockData';
 import { 
   auth, 
   googleProvider, 
@@ -215,6 +215,13 @@ interface OrbitaContextType {
   soundboardModalOpen: boolean;
   setSoundboardModalOpen: (open: boolean) => void;
 
+  // Server & Channel Modals
+  serverModalOpen: boolean;
+  serverModalTab: 'create' | 'join' | 'discover';
+  openServerModal: (tab?: 'create' | 'join' | 'discover') => void;
+  setServerModalOpen: (open: boolean) => void;
+  setServerModalTab: (tab: 'create' | 'join' | 'discover') => void;
+
   // Participant Moderation & Context Menu Actions
   userVolumes: Record<string, number>;
   setUserVolume: (userId: string, volume: number) => void;
@@ -248,9 +255,11 @@ interface OrbitaContextType {
   sendMessage: (content: string, attachmentUrl?: string) => void;
   sendDirectMessage: (content: string, attachmentUrl?: string) => void;
   
-  // Friend Actions
+  // Friend & Call Actions
   addFriend: (tagOrName: string) => { success: boolean; message: string };
   removeFriend: (friendId: string) => void;
+  callFriend: (friend: Friend) => void;
+  inviteFriendToCurrentCall: (friend: Friend) => void;
   
   // Voice & Video Actions
   connectVoice: (channel?: Channel) => void;
@@ -269,12 +278,17 @@ interface OrbitaContextType {
   deleteSoundItem: (id: string) => void;
   
   // Server Management Actions
-  createNewServer: (name: string, iconUrl?: string, description?: string) => void;
+  createNewServer: (name: string, iconUrl?: string, description?: string) => Promise<void>;
+  joinServer: (codeOrId: string) => Promise<{ success: boolean; message: string; server?: ServerData }>;
   leaveServer: (serverId: string) => void;
   deleteServer: (serverId: string) => void;
   createNewChannel: (name: string, type: 'text' | 'voice', topic?: string, userLimit?: number) => void;
   updateServerTheme: (theme: ServerTheme, accentColor: string) => void;
   updateServerRoles: (roles: ServerRole[]) => void;
+
+  // Toast Notification
+  toastMessage: { text: string; type?: 'info' | 'success' | 'warning' | 'error' } | null;
+  showToast: (text: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
   
   // Auth & Profile
   loginWithEmail: (email: string, password: string) => Promise<void>;
@@ -308,6 +322,27 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [soundboardModalOpen, setSoundboardModalOpen] = useState(false);
+
+  // Server Creation / Joining / Discovery Modal
+  const [serverModalOpen, setServerModalOpen] = useState(false);
+  const [serverModalTab, setServerModalTab] = useState<'create' | 'join' | 'discover'>('create');
+
+  const openServerModal = useCallback((tab: 'create' | 'join' | 'discover' = 'create') => {
+    setServerModalTab(tab);
+    setServerModalOpen(true);
+  }, []);
+
+  // Global Toast Notifications
+  const [toastMessage, setToastMessage] = useState<{ text: string; type?: 'info' | 'success' | 'warning' | 'error' } | null>(null);
+  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = useCallback((text: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastMessage({ text, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 3800);
+  }, []);
 
   // Themes & Custom Colors: persistent
   const [appTheme, setAppThemeState] = useState<AppTheme>(() =>
@@ -677,7 +712,7 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [inVoiceCall]);
 
-  // Add Friend by tag or name
+  // Add Friend by tag or name - synced to Firestore
   const addFriend = useCallback((tagOrName: string) => {
     const clean = tagOrName.trim();
     if (!clean) return { success: false, message: 'Digite um nome ou tag de amigo válida.' };
@@ -685,36 +720,148 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const tag = clean.includes('#') ? clean : `${clean.toLowerCase()}#${Math.floor(1000 + Math.random() * 9000)}`;
     const name = clean.split('#')[0];
 
+    const avatarPool = [
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=faces',
+    ];
+    const avatarUrl = avatarPool[Math.floor(Math.random() * avatarPool.length)];
+
     const newFriend: Friend = {
       id: `friend_${Date.now()}`,
       name: name,
       tag: tag,
-      avatarUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces`,
+      avatarUrl: avatarUrl,
       status: 'online',
-      customStatus: 'Disponível no Orb.co',
+      customStatus: 'Disponível no Orb.co 🪐',
       bio: `Amigo no Orb.co (${tag})`,
       ping: Math.floor(Math.random() * 20 + 15),
     };
 
     setFriends(prev => {
+      if (prev.some(f => f.tag.toLowerCase() === tag.toLowerCase())) {
+        return prev;
+      }
       const updated = [newFriend, ...prev];
       saveStorage(STORAGE_KEYS.FRIENDS, updated);
+
+      if (auth.currentUser) {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        setDoc(userRef, { friends: cleanFirestorePayload(updated) }, { merge: true }).catch(() => {});
+      }
+
       return updated;
     });
+
+    soundEngine.playBuiltinSound('friend_add', 0.6);
     setActiveFriendId(newFriend.id);
+    showToast(`Amigo @${name} adicionado com sucesso!`, 'success');
     return { success: true, message: `Amigo ${name} adicionado com sucesso!` };
-  }, []);
+  }, [showToast]);
 
   const removeFriend = useCallback((friendId: string) => {
     setFriends(prev => {
       const updated = prev.filter(f => f.id !== friendId);
       saveStorage(STORAGE_KEYS.FRIENDS, updated);
+      if (auth.currentUser) {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        setDoc(userRef, { friends: cleanFirestorePayload(updated) }, { merge: true }).catch(() => {});
+      }
       return updated;
     });
     if (activeFriendId === friendId) {
       setActiveFriendId(null);
     }
   }, [activeFriendId]);
+
+  // Call Friend Directly (Single button call without link)
+  const callFriend = useCallback((friend: Friend) => {
+    soundEngine.playBuiltinSound('call_ring', 0.7);
+
+    if (inVoiceCall) {
+      // Already in call: pull friend into current call
+      setSimulatedVoiceParticipants(prev => {
+        if (prev.some(p => p.id === friend.id)) return prev;
+        return [
+          ...prev,
+          {
+            id: friend.id,
+            name: friend.name,
+            email: `${friend.name.toLowerCase()}@orb.co`,
+            avatarUrl: friend.avatarUrl,
+            bannerUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
+            bio: friend.bio || '',
+            status: 'online',
+            ping: friend.ping || 20,
+            isSharingScreen: false,
+            role: 'member',
+          }
+        ];
+      });
+      setTimeout(() => {
+        soundEngine.playBuiltinSound('call_connect', 0.7);
+      }, 700);
+      showToast(`Chamando ${friend.name}... Entrou na chamada!`, 'success');
+    } else {
+      // Start 1-on-1 private voice call
+      setInVoiceCall(true);
+      setIsViewingVoiceRoom(true);
+      setVoiceChannel(null);
+      setVoiceCallTitle(`Chamada com ${friend.name}`);
+      setSimulatedVoiceParticipants([{
+        id: friend.id,
+        name: friend.name,
+        email: `${friend.name.toLowerCase()}@orb.co`,
+        avatarUrl: friend.avatarUrl,
+        bannerUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
+        bio: friend.bio || '',
+        status: 'online',
+        ping: friend.ping || 20,
+        isSharingScreen: true,
+        role: 'member',
+      }]);
+      setActiveMainScreenId(friend.id);
+
+      setTimeout(() => {
+        soundEngine.playBuiltinSound('call_connect', 0.7);
+      }, 700);
+
+      soundEngine.startVoiceMonitoring((speaking) => {
+        setIsSpeaking(speaking && !isMuted);
+      });
+
+      showToast(`Chamando ${friend.name}... Conectado!`, 'success');
+    }
+  }, [inVoiceCall, isMuted, showToast]);
+
+  // Invite Friend into Current Voice Room
+  const inviteFriendToCurrentCall = useCallback((friend: Friend) => {
+    soundEngine.playBuiltinSound('call_ring', 0.6);
+    setTimeout(() => {
+      setSimulatedVoiceParticipants(prev => {
+        if (prev.some(p => p.id === friend.id)) return prev;
+        return [
+          ...prev,
+          {
+            id: friend.id,
+            name: friend.name,
+            email: `${friend.name.toLowerCase()}@orb.co`,
+            avatarUrl: friend.avatarUrl,
+            bannerUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
+            bio: friend.bio || '',
+            status: 'online',
+            ping: friend.ping || 20,
+            isSharingScreen: false,
+            role: 'member',
+          }
+        ];
+      });
+      soundEngine.playBuiltinSound('call_connect', 0.7);
+      showToast(`${friend.name} entrou na chamada!`, 'success');
+    }, 700);
+  }, [showToast]);
 
   // WatchParty Actions
   const startWatchParty = useCallback((url: string, title?: string) => {
@@ -1172,7 +1319,171 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCurrentServerIdState(newId);
     setCurrentChannelIdState(`chan_${newId}_geral`);
     setNavigationMode('server');
+    soundEngine.playBuiltinSound('server_join', 0.6);
   }, [currentUser]);
+
+  // Join Server by Invite Code, Link, or ID
+  const joinServer = useCallback(async (codeOrId: string): Promise<{ success: boolean; message: string; server?: ServerData }> => {
+    let clean = (codeOrId || '').trim();
+    if (!clean) return { success: false, message: 'Digite um código ou link de convite válido.' };
+
+    // Parse full URL or query params or hash
+    if (clean.includes('convite=')) {
+      clean = clean.split('convite=')[1].split('&')[0];
+    } else if (clean.includes('invite=')) {
+      clean = clean.split('invite=')[1].split('&')[0];
+    } else if (clean.includes('/')) {
+      clean = clean.split('/').pop() || clean;
+    }
+    clean = decodeURIComponent(clean).replace(/^#/, '').trim();
+
+    // 1. Check if user is already a member of this server
+    const alreadyJoined = servers.find(s => s.id === clean || s.name.toLowerCase() === clean.toLowerCase());
+    if (alreadyJoined) {
+      setCurrentServerIdState(alreadyJoined.id);
+      if (alreadyJoined.channels.length > 0) {
+        setCurrentChannelIdState(alreadyJoined.channels[0].id);
+      }
+      setNavigationMode('server');
+      setActiveView('app');
+      soundEngine.playBuiltinSound('server_join', 0.6);
+      return { success: true, message: `Você já está no servidor ${alreadyJoined.name}!`, server: alreadyJoined };
+    }
+
+    // 2. Check public community servers
+    const communityFound = PUBLIC_COMMUNITY_SERVERS.find(
+      s => s.id === clean || s.id.replace('srv_', '') === clean.replace('srv_', '') || s.name.toLowerCase().includes(clean.toLowerCase())
+    );
+
+    let targetServer: ServerData | null = null;
+    if (communityFound) {
+      targetServer = {
+        ...communityFound,
+        members: [...communityFound.members, currentUser]
+      };
+    } else {
+      // 3. Try fetching from Firestore /servers collection
+      try {
+        const sDoc = await getDocFromServer(doc(db, 'servers', clean));
+        if (sDoc.exists()) {
+          const sData = sDoc.data();
+          targetServer = {
+            id: clean,
+            name: sData.name || 'Servidor Orb',
+            iconUrl: sData.iconUrl || '🪐',
+            description: sData.description || 'Servidor acessado via link no Orb.co',
+            ownerId: sData.ownerId || 'admin',
+            theme: sData.theme || 'nebula',
+            accentColor: sData.themeColor || '#818cf8',
+            roles: [
+              {
+                id: 'role_member',
+                name: 'Membro',
+                color: '#10b981',
+                permissions: { sendMessages: true, speakInVoice: true, shareScreen: true, useSoundboard: true, manageChannels: false, muteMembers: false, administrator: false }
+              }
+            ],
+            channels: [
+              { id: `chan_${clean}_geral`, serverId: clean, name: 'geral', type: 'text', topic: 'Canal de texto' },
+              { id: `chan_${clean}_voz`, serverId: clean, name: 'Voz Geral', type: 'voice' },
+            ],
+            soundboard: [],
+            members: [currentUser],
+          };
+        }
+      } catch {
+        // Continue to fallback
+      }
+    }
+
+    // 4. Fallback: virtual server instance for custom link code
+    if (!targetServer) {
+      const formattedName = clean.startsWith('srv_') ? `Servidor #${clean.substring(4, 9)}` : clean.charAt(0).toUpperCase() + clean.slice(1);
+      targetServer = {
+        id: clean.startsWith('srv_') ? clean : `srv_${clean}`,
+        name: formattedName,
+        iconUrl: '🪐',
+        description: 'Servidor acessado via link de convite.',
+        ownerId: 'community',
+        theme: 'nebula',
+        accentColor: '#818cf8',
+        roles: [],
+        channels: [
+          { id: `chan_${clean}_geral`, serverId: clean, name: 'geral', type: 'text', topic: 'Canal de texto' },
+          { id: `chan_${clean}_voz`, serverId: clean, name: 'Voz Geral', type: 'voice' },
+        ],
+        soundboard: [],
+        members: [currentUser],
+      };
+    }
+
+    // Add server to user's servers list
+    setServers(prev => {
+      const updated = [...prev, targetServer!];
+      saveStorage(STORAGE_KEYS.SERVERS, updated);
+      if (auth.currentUser) {
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        setDoc(userRef, { servers: cleanFirestorePayload(updated) }, { merge: true }).catch(() => {});
+      }
+      return updated;
+    });
+
+    setCurrentServerIdState(targetServer.id);
+    if (targetServer.channels.length > 0) {
+      setCurrentChannelIdState(targetServer.channels[0].id);
+    }
+    setNavigationMode('server');
+    setActiveView('app');
+    soundEngine.playBuiltinSound('server_join', 0.6);
+    return { success: true, message: `Você entrou no servidor ${targetServer.name}!`, server: targetServer };
+  }, [servers, currentUser]);
+
+  // Listen for and automatically process URL invite links (#convite=..., ?convite=..., ?invite=...)
+  useEffect(() => {
+    const handleUrlInvite = async () => {
+      try {
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+
+        let inviteCode: string | null = null;
+        let callInvite: string | null = null;
+
+        if (hash.includes('convite=')) {
+          inviteCode = hash.split('convite=')[1]?.split('&')[0];
+        } else if (hash.includes('invite=')) {
+          inviteCode = hash.split('invite=')[1]?.split('&')[0];
+        } else if (hash.includes('chamada=')) {
+          callInvite = hash.split('chamada=')[1]?.split('&')[0];
+        } else if (hash.includes('call=')) {
+          callInvite = hash.split('call=')[1]?.split('&')[0];
+        }
+
+        const params = new URLSearchParams(search);
+        if (!inviteCode) {
+          inviteCode = params.get('convite') || params.get('invite') || params.get('server');
+        }
+        if (!callInvite) {
+          callInvite = params.get('chamada') || params.get('call') || params.get('room');
+        }
+
+        if (inviteCode) {
+          const res = await joinServer(inviteCode);
+          if (res.success) {
+            showToast(`🎉 ${res.message}`, 'success');
+          }
+        } else if (callInvite) {
+          connectVoice();
+          showToast('📞 Conectado à chamada de voz via link!', 'info');
+        }
+      } catch (err) {
+        console.warn('Error reading invite link:', err);
+      }
+    };
+
+    handleUrlInvite();
+    window.addEventListener('hashchange', handleUrlInvite);
+    return () => window.removeEventListener('hashchange', handleUrlInvite);
+  }, [joinServer, connectVoice, showToast]);
 
   // Leave Server
   const leaveServer = useCallback((serverId: string) => {
@@ -1634,6 +1945,11 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       serverSettingsOpen,
       inviteModalOpen,
       soundboardModalOpen,
+      serverModalOpen,
+      serverModalTab,
+      openServerModal,
+      setServerModalOpen,
+      setServerModalTab,
 
       setActiveView,
       setNavigationMode,
@@ -1660,6 +1976,8 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       sendDirectMessage,
       addFriend,
       removeFriend,
+      callFriend,
+      inviteFriendToCurrentCall,
 
       connectVoice,
       startPrivateCall,
@@ -1676,11 +1994,15 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       deleteSoundItem,
 
       createNewServer,
+      joinServer,
       leaveServer,
       deleteServer,
       createNewChannel,
       updateServerTheme,
       updateServerRoles,
+
+      toastMessage,
+      showToast,
 
       loginWithEmail,
       registerWithEmail,

@@ -24,7 +24,9 @@ import {
   Maximize2,
   Lock,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Phone,
+  Compass
 } from 'lucide-react';
 import { Channel, UserProfile } from '../types';
 import { UserContextMenu } from './UserContextMenu';
@@ -65,7 +67,9 @@ export const Sidebar: React.FC = () => {
     createNewChannel,
     createNewServer,
     leaveServer,
-    setInviteModalOpen
+    setInviteModalOpen,
+    openServerModal,
+    callFriend
   } = useOrbita();
 
   const [contextMenu, setContextMenu] = useState<{
@@ -90,8 +94,6 @@ export const Sidebar: React.FC = () => {
   const [hasChannelLimit, setHasChannelLimit] = useState(false);
   const [newChannelLimit, setNewChannelLimit] = useState<number>(10);
 
-  const [newServerModalOpen, setNewServerModalOpen] = useState(false);
-  const [newServerName, setNewServerName] = useState('');
   const [serverDropdownOpen, setServerDropdownOpen] = useState(false);
 
   const handleCreateChannel = (e: React.FormEvent) => {
@@ -107,14 +109,6 @@ export const Sidebar: React.FC = () => {
     setHasChannelLimit(false);
     setNewChannelLimit(10);
     setNewChannelModalOpen(false);
-  };
-
-  const handleCreateServer = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newServerName.trim()) return;
-    createNewServer(newServerName);
-    setNewServerName('');
-    setNewServerModalOpen(false);
   };
 
   const textChannels = currentServer?.channels.filter(c => c.type === 'text') || [];
@@ -173,11 +167,20 @@ export const Sidebar: React.FC = () => {
 
           {/* Add / Create Server (+) button */}
           <button
-            onClick={() => setNewServerModalOpen(true)}
+            onClick={() => openServerModal('create')}
             className="w-11 h-11 rounded-2xl bg-white/5 hover:bg-emerald-600/20 border border-dashed border-white/20 hover:border-emerald-500/50 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all cursor-pointer"
-            title="Criar novo servidor"
+            title="Criar ou Entrar em um Servidor (+)"
           >
             <Plus className="w-5 h-5" />
+          </button>
+
+          {/* Explore Public Communities button */}
+          <button
+            onClick={() => openServerModal('discover')}
+            className="w-11 h-11 rounded-2xl bg-white/5 hover:bg-indigo-600/20 border border-white/10 text-slate-400 hover:text-indigo-300 flex items-center justify-center transition-all cursor-pointer"
+            title="Explorar Comunidades e Servidores Públicos"
+          >
+            <Compass className="w-5 h-5" />
           </button>
         </div>
 
@@ -239,6 +242,17 @@ export const Sidebar: React.FC = () => {
                   >
                     <span>Configurações do Servidor</span>
                     <Sliders className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      openServerModal('join');
+                      setServerDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-semibold text-cyan-300 hover:bg-white/5 flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Entrar com Código / Link</span>
+                    <Compass className="w-3.5 h-3.5" />
                   </button>
 
                   <div className="h-[1px] bg-white/10 my-1"></div>
@@ -525,11 +539,15 @@ export const Sidebar: React.FC = () => {
                   <div className="flex items-center justify-between px-2 mb-2 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
                     <span>Mensagens Diretas</span>
                     <button
-                      onClick={() => selectFriend(null)}
-                      className="p-1 rounded hover:bg-white/5 hover:text-white cursor-pointer"
-                      title="Adicionar amigo"
+                      onClick={() => {
+                        setNavigationMode('friends');
+                        selectFriend(null);
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                      title="Adicionar amigo pelo nome ou tag"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-3 h-3" />
+                      <span>Adicionar</span>
                     </button>
                   </div>
 
@@ -542,28 +560,44 @@ export const Sidebar: React.FC = () => {
                       {friends.map(friend => {
                         const isSelected = activeFriendId === friend.id;
                         return (
-                          <button
+                          <div
                             key={friend.id}
                             onClick={() => selectFriend(friend.id)}
-                            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left cursor-pointer ${
+                            className={`group w-full flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-all text-left cursor-pointer ${
                               isSelected 
                                 ? 'bg-white/10 text-white font-semibold' 
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                             }`}
                           >
-                            <div className="relative shrink-0">
-                              <img 
-                                src={friend.avatarUrl} 
-                                alt={friend.name} 
-                                className="w-7 h-7 rounded-full object-cover" 
-                              />
-                              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-theme"></span>
+                            <div className="flex items-center gap-2.5 truncate min-w-0">
+                              <div className="relative shrink-0">
+                                <img 
+                                  src={friend.avatarUrl} 
+                                  alt={friend.name} 
+                                  className="w-7 h-7 rounded-full object-cover" 
+                                />
+                                <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-theme ${
+                                  friend.status === 'online' ? 'bg-emerald-400' : 'bg-slate-500'
+                                }`}></span>
+                              </div>
+                              <div className="truncate flex-1">
+                                <div className="truncate text-slate-200 group-hover:text-white font-semibold">{friend.name}</div>
+                                <div className="text-[10px] text-slate-500 truncate">{friend.customStatus || friend.tag}</div>
+                              </div>
                             </div>
-                            <div className="truncate flex-1">
-                              <div className="truncate">{friend.name}</div>
-                              <div className="text-[10px] text-slate-500 truncate">{friend.tag}</div>
-                            </div>
-                          </button>
+
+                            {/* Direct Call Phone Button right from Sidebar */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                callFriend(friend);
+                              }}
+                              className="w-7 h-7 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/30 text-emerald-400 flex items-center justify-center opacity-70 group-hover:opacity-100 transition-opacity hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                              title={`Ligar diretamente para ${friend.name} (Chamar agora)`}
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -811,47 +845,7 @@ export const Sidebar: React.FC = () => {
         </div>
       )}
 
-      {/* Modal: New Server */}
-      {newServerModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-sm rounded-2xl p-5 shadow-2xl border border-white/10 animate-fade-in">
-            <h3 className="text-base font-bold text-white mb-2">Criar Servidor</h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Crie um novo espaço dedicado no Orb.co salvo na sua conta.
-            </p>
-            <form onSubmit={handleCreateServer} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Nome do Servidor</label>
-                <input 
-                  type="text"
-                  placeholder="ex: Galáxia Gamer"
-                  value={newServerName}
-                  onChange={(e) => setNewServerName(e.target.value)}
-                  className="w-full glass-input px-3 py-2 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                  autoFocus
-                />
-              </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setNewServerModalOpen(false)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-medium text-slate-400 hover:bg-white/5 cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newServerName.trim()}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 cursor-pointer shadow-md shadow-indigo-600/30"
-                >
-                  Criar Servidor
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* User Context Menu (Right Click) */}
       {contextMenu && (

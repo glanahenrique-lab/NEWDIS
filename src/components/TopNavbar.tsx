@@ -34,6 +34,7 @@ export const TopNavbar: React.FC = () => {
     setServerSettingsOpen,
     setInviteModalOpen,
     setSoundboardModalOpen,
+    openServerModal,
     inVoiceCall,
     isViewingVoiceRoom,
     returnToVoiceRoom,
@@ -148,17 +149,15 @@ export const TopNavbar: React.FC = () => {
           </button>
         )}
 
-        {/* Invite Friends Button */}
-        {navigationMode === 'server' && currentServer && (
-          <button 
-            onClick={() => setInviteModalOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 text-xs font-semibold transition-all cursor-pointer"
-            title="Convidar amigos"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>Convidar</span>
-          </button>
-        )}
+        {/* Invite Friends / Chamar Button */}
+        <button 
+          onClick={() => setInviteModalOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-all cursor-pointer shadow-sm shadow-indigo-500/10 hover:scale-105 active:scale-95"
+          title={inVoiceCall ? "Chamar amigos para a chamada de voz" : "Convidar amigos ou gerar link"}
+        >
+          <UserPlus className="w-3.5 h-3.5" />
+          <span>{inVoiceCall ? 'Chamar Amigos' : 'Convidar'}</span>
+        </button>
 
         {/* Quick Theme & Color Palette Switcher */}
         <div className="relative" ref={paletteRef}>

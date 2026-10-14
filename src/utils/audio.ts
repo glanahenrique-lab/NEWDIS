@@ -283,6 +283,94 @@ class SoundEngine {
           break;
         }
 
+        case 'call_ring': {
+          // Pleasant outgoing ring tone: dual harmonic chime pulse
+          [440, 480].forEach(freq => {
+            const osc = ctx.createOscillator();
+            const rGain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now);
+            osc.frequency.setValueAtTime(freq, now + 0.8);
+            
+            rGain.gain.setValueAtTime(0.2 * volume, now);
+            rGain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+            
+            osc.connect(rGain);
+            rGain.connect(gainNode);
+            osc.start(now);
+            osc.stop(now + 0.95);
+          });
+          break;
+        }
+
+        case 'call_connect': {
+          // Ascending harmonic triumphal chime
+          [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const cGain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+            cGain.gain.setValueAtTime(0.25 * volume, now + idx * 0.07);
+            cGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.35);
+            osc.connect(cGain);
+            cGain.connect(gainNode);
+            osc.start(now + idx * 0.07);
+            osc.stop(now + idx * 0.07 + 0.4);
+          });
+          break;
+        }
+
+        case 'call_end': {
+          // Soft descending chime
+          [659.25, 523.25, 392.00].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const eGain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+            eGain.gain.setValueAtTime(0.25 * volume, now + idx * 0.09);
+            eGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.25);
+            osc.connect(eGain);
+            eGain.connect(gainNode);
+            osc.start(now + idx * 0.09);
+            osc.stop(now + idx * 0.09 + 0.3);
+          });
+          break;
+        }
+
+        case 'server_join': {
+          // Resonant welcoming chime
+          [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const jGain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+            jGain.gain.setValueAtTime(0.3 * volume, now + idx * 0.06);
+            jGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.45);
+            osc.connect(jGain);
+            jGain.connect(gainNode);
+            osc.start(now + idx * 0.06);
+            osc.stop(now + idx * 0.06 + 0.5);
+          });
+          break;
+        }
+
+        case 'friend_add': {
+          // Cheerful double blip
+          [587.33, 880].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const fGain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+            fGain.gain.setValueAtTime(0.28 * volume, now + idx * 0.08);
+            fGain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.2);
+            osc.connect(fGain);
+            fGain.connect(gainNode);
+            osc.start(now + idx * 0.08);
+            osc.stop(now + idx * 0.08 + 0.25);
+          });
+          break;
+        }
+
         default: {
           // Generic ding
           const osc = ctx.createOscillator();

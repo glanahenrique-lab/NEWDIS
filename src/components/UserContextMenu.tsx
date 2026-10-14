@@ -14,7 +14,9 @@ import {
   Clock, 
   Sliders, 
   Shield,
-  Monitor
+  Monitor,
+  Phone,
+  UserPlus
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { useOrbita } from '../context/OrbitaContext';
@@ -64,6 +66,9 @@ export const UserContextMenu: React.FC<UserContextMenuProps> = ({
     setProfileModalOpen,
     selectFriend,
     setNavigationMode,
+    callFriend,
+    addFriend,
+    friends
   } = useOrbita();
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -409,6 +414,41 @@ export const UserContextMenu: React.FC<UserContextMenuProps> = ({
               <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
               <span>Enviar mensagem direta</span>
             </button>
+
+            {/* Direct Call User */}
+            <button
+              onClick={() => {
+                callFriend({
+                  id: user.id,
+                  name: user.name,
+                  tag: user.tag || `@${user.name.toLowerCase()}`,
+                  avatarUrl: user.avatarUrl,
+                  status: user.status || 'online',
+                  customStatus: user.customStatus,
+                  bio: user.bio,
+                  ping: user.ping || 20
+                });
+                onClose();
+              }}
+              className="w-full px-2 py-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <Phone className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Ligar para {user.name}</span>
+            </button>
+
+            {/* Add Friend if not already friend */}
+            {!friends.some(f => f.id === user.id) && (
+              <button
+                onClick={() => {
+                  addFriend(user.tag || user.name);
+                  onClose();
+                }}
+                className="w-full px-2 py-1.5 rounded-lg hover:bg-cyan-500/20 text-cyan-400 hover:text-cyan-300 flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Adicionar aos amigos</span>
+              </button>
+            )}
           </>
         )}
 
