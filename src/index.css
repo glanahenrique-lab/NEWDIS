@@ -1,0 +1,386 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --theme-bg: #0b0c10;
+    --theme-sidebar: #0e1017;
+    --theme-surface: #12141f;
+    --theme-card: #151724;
+    --theme-border: rgba(255, 255, 255, 0.08);
+    --theme-accent: #6366f1;
+    --theme-accent-hover: #4f46e5;
+    --theme-accent-glow: rgba(99, 102, 241, 0.35);
+    --theme-text: #f8fafc;
+    --theme-text-muted: #94a3b8;
+
+    --bg-glass: rgba(18, 20, 31, 0.75);
+    --border-glass: rgba(255, 255, 255, 0.08);
+  }
+
+  /* Themes - Rich full-site color immersion with high text contrast */
+  .theme-nebula {
+    --theme-bg: #090a14;
+    --theme-sidebar: #06070e;
+    --theme-surface: #0e1022;
+    --theme-card: #151833;
+    --theme-border: rgba(129, 140, 248, 0.18);
+    --theme-accent: #6366f1;
+    --theme-accent-hover: #4f46e5;
+    --theme-accent-glow: rgba(99, 102, 241, 0.35);
+    --theme-text: #ffffff;
+    --theme-text-muted: #cbd5e1;
+  }
+
+  .theme-cyber {
+    --theme-bg: #021118;
+    --theme-sidebar: #010c12;
+    --theme-surface: #041b26;
+    --theme-card: #08293a;
+    --theme-border: rgba(6, 182, 212, 0.22);
+    --theme-accent: #06b6d4;
+    --theme-accent-hover: #0891b2;
+    --theme-accent-glow: rgba(6, 182, 212, 0.35);
+    --theme-text: #ffffff;
+    --theme-text-muted: #cbd5e1;
+  }
+
+  .theme-aurora {
+    --theme-bg: #03140d;
+    --theme-sidebar: #020e09;
+    --theme-surface: #062015;
+    --theme-card: #0a3020;
+    --theme-border: rgba(16, 185, 129, 0.22);
+    --theme-accent: #10b981;
+    --theme-accent-hover: #059669;
+    --theme-accent-glow: rgba(16, 185, 129, 0.35);
+    --theme-text: #ffffff;
+    --theme-text-muted: #cbd5e1;
+  }
+
+  .theme-solar {
+    --theme-bg: #140b02;
+    --theme-sidebar: #0e0701;
+    --theme-surface: #201305;
+    --theme-card: #301d08;
+    --theme-border: rgba(245, 158, 11, 0.22);
+    --theme-accent: #f59e0b;
+    --theme-accent-hover: #d97706;
+    --theme-accent-glow: rgba(245, 158, 11, 0.35);
+    --theme-text: #ffffff;
+    --theme-text-muted: #cbd5e1;
+  }
+
+  .theme-rose {
+    --theme-bg: #15050e;
+    --theme-sidebar: #0f030a;
+    --theme-surface: #220918;
+    --theme-card: #320f23;
+    --theme-border: rgba(244, 63, 94, 0.22);
+    --theme-accent: #f43f5e;
+    --theme-accent-hover: #e11d48;
+    --theme-accent-glow: rgba(244, 63, 94, 0.35);
+    --theme-text: #ffffff;
+    --theme-text-muted: #cbd5e1;
+  }
+
+  .theme-graphite {
+    --theme-bg: #09090b;
+    --theme-sidebar: #050507;
+    --theme-surface: #121216;
+    --theme-card: #1c1c22;
+    --theme-border: rgba(255, 255, 255, 0.1);
+    --theme-accent: #64748b;
+    --theme-accent-hover: #475569;
+    --theme-accent-glow: rgba(100, 116, 139, 0.3);
+    --theme-text: #ffffff;
+    --theme-text-muted: #cbd5e1;
+  }
+
+  .theme-light {
+    --theme-bg: #f8fafc;
+    --theme-sidebar: #f1f5f9;
+    --theme-surface: #ffffff;
+    --theme-card: #ffffff;
+    --theme-border: rgba(0, 0, 0, 0.1);
+    --theme-accent: #4f46e5;
+    --theme-accent-hover: #4338ca;
+    --theme-accent-glow: rgba(79, 70, 229, 0.25);
+    --theme-text: #0f172a;
+    --theme-text-muted: #475569;
+    --bg-glass: rgba(255, 255, 255, 0.88);
+    --border-glass: rgba(0, 0, 0, 0.09);
+  }
+}
+
+/* Modern Bubble Island System & Glassmorphism */
+.bubble-island {
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--theme-border);
+  box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.7), inset 0 1px 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.bubble-card {
+  background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%), var(--theme-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--theme-border);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.06);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bubble-card:hover {
+  background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%), var(--theme-card);
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 18px 42px -12px rgba(0, 0, 0, 0.65), inset 0 1px 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.bubble-pill {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--theme-border);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bubble-pill:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px) scale(1.02);
+}
+
+.bubble-pill:active {
+  transform: translateY(0px) scale(0.98);
+}
+
+.glass-panel {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--theme-border);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--theme-border);
+}
+
+.glass-input {
+  background: rgba(18, 20, 29, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--theme-border);
+}
+
+/* Dynamic theme background classes */
+.bg-theme-main {
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+.bg-theme-sidebar {
+  background-color: var(--theme-sidebar);
+}
+
+.bg-theme-surface {
+  background-color: var(--theme-surface);
+}
+
+.bg-theme-card {
+  background-color: var(--theme-card);
+}
+
+.border-theme {
+  border-color: var(--theme-border);
+}
+
+.text-theme-main {
+  color: var(--theme-text);
+}
+
+.text-theme-muted {
+  color: var(--theme-text-muted);
+}
+
+.text-theme-accent {
+  color: var(--theme-accent);
+}
+
+.bg-theme-accent {
+  background-color: var(--theme-accent);
+}
+
+.border-theme-accent {
+  border-color: var(--theme-accent);
+}
+
+/* Organic Cosmic Atmosphere Gradient */
+.cosmic-gradient-bg {
+  background: radial-gradient(circle at 80% 15%, var(--theme-accent-glow) 0%, transparent 45%),
+              radial-gradient(circle at 15% 80%, rgba(99, 102, 241, 0.12) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.05) 0%, transparent 60%),
+              var(--theme-bg);
+}
+
+/* Fluid Keyframe Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Orbit Pulsing Animations - Refined & Subtle */
+@keyframes neon-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.4), 0 0 10px 1px rgba(45, 212, 191, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(45, 212, 191, 0), 0 0 16px 2px rgba(45, 212, 191, 0.28);
+  }
+}
+
+@keyframes orbit-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-neon-speaking {
+  animation: neon-pulse 1.8s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  border-color: #2dd4bf !important;
+}
+
+.animate-orbit-slow {
+  animation: orbit-rotate 120s linear infinite;
+}
+
+.animate-orbit-reverse {
+  animation: orbit-rotate 90s linear infinite reverse;
+}
+
+/* Orbit Muted & Planet Drift Dynamics */
+.orbit-ring-muted {
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  box-shadow: 0 0 8px rgba(100, 116, 139, 0.15) !important;
+}
+
+.avatar-ring-muted {
+  filter: grayscale(0.95) contrast(0.9);
+  border-color: #64748b !important;
+  box-shadow: 0 0 12px rgba(100, 116, 139, 0.25) !important;
+  opacity: 0.8;
+}
+
+/* Planet Exit to Bottom-Right and Arrival to Orbit Animations */
+@keyframes planet-exit-keyframes {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+    filter: grayscale(0);
+  }
+  40% {
+    transform: translate(40px, 40px) scale(0.85);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(110px, 110px) scale(0.55);
+    opacity: 0.25;
+    filter: grayscale(1) blur(1px);
+  }
+}
+
+@keyframes planet-enter-keyframes {
+  0% {
+    transform: translate(110px, 110px) scale(0.55);
+    opacity: 0.25;
+    filter: grayscale(1) blur(1px);
+  }
+  60% {
+    transform: translate(-10px, -10px) scale(1.08);
+    opacity: 0.95;
+    filter: grayscale(0.2);
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+    filter: grayscale(0);
+  }
+}
+
+.planet-anim-exit {
+  animation: planet-exit-keyframes 0.75s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.planet-anim-enter {
+  animation: planet-enter-keyframes 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Floating Wandering Planet (Roaming Orbit Widget) */
+@keyframes wandering-planet-float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-8px) rotate(1.5deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(-1deg);
+  }
+  75% {
+    transform: translateY(-10px) rotate(0.8deg);
+  }
+}
+
+.wandering-planet-glow {
+  animation: wandering-planet-float 6s ease-in-out infinite;
+  box-shadow: 0 10px 30px -5px var(--theme-accent-glow), 0 0 15px 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Sleek custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-accent);
+}

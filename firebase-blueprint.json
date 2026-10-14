@@ -1,0 +1,123 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with avatar, banner, bio, and status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 80 },
+        "email": { "type": "string", "maxLength": 150 },
+        "bio": { "type": "string", "maxLength": 300 },
+        "avatarUrl": { "type": "string", "maxLength": 2000 },
+        "bannerUrl": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["online", "idle", "dnd", "offline"] },
+        "ping": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Server": {
+      "title": "Server",
+      "description": "Community space / Discord server with custom theme and channels",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 80 },
+        "iconUrl": { "type": "string", "maxLength": 2000 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "themeColor": { "type": "string", "maxLength": 32 },
+        "description": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "ownerId"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Server member with role and permissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "serverId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["owner", "admin", "moderator", "member"] },
+        "joinedAt": { "type": "string" }
+      },
+      "required": ["id", "serverId", "userId", "role"]
+    },
+    "Channel": {
+      "title": "Channel",
+      "description": "Text or voice channel inside a server",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "serverId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "enum": ["text", "voice"] },
+        "topic": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "serverId", "name", "type"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Message sent in a text or voice channel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "serverId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "userName": { "type": "string", "maxLength": 80 },
+        "userAvatar": { "type": "string", "maxLength": 2000 },
+        "content": { "type": "string", "maxLength": 4000 },
+        "attachmentUrl": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "channelId", "serverId", "userId", "userName", "content"]
+    },
+    "SoundItem": {
+      "title": "SoundItem",
+      "description": "Server soundboard sound trigger item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "serverId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 60 },
+        "emoji": { "type": "string", "maxLength": 16 },
+        "audioUrl": { "type": "string", "maxLength": 2000 },
+        "volume": { "type": "number" },
+        "addedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "serverId", "title", "emoji", "audioUrl"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/servers/{serverId}": {
+      "schema": "Server",
+      "description": "Server community collection"
+    },
+    "/servers/{serverId}/members/{memberId}": {
+      "schema": "Member",
+      "description": "Server membership and role assignments"
+    },
+    "/servers/{serverId}/channels/{channelId}": {
+      "schema": "Channel",
+      "description": "Channels belonging to a server"
+    },
+    "/servers/{serverId}/channels/{channelId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Chat messages in a channel"
+    },
+    "/servers/{serverId}/soundboard/{soundId}": {
+      "schema": "SoundItem",
+      "description": "Custom server soundboard items"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Órbita - Voz, Vídeo e Amizade",
+  "description": "Sua nova órbita de voz, vídeo e amizade. Chat de voz modular, compartilhamento de tela, constelação de áudio, soundboard e personalização total.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
+
