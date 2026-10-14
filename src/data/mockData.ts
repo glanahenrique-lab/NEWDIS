@@ -68,30 +68,7 @@ export const INITIAL_SERVERS: ServerData[] = [
       { id: 'snd_applause_c', serverId: 'srv_orb_central', title: 'Aplausos', emoji: '👏', category: 'Reação', soundKey: 'gg_applause', volume: 0.8 },
       { id: 'snd_bruh_c', serverId: 'srv_orb_central', title: 'Bruh', emoji: '🗿', category: 'Meme', soundKey: 'bruh', volume: 0.8 },
     ],
-    members: [
-      {
-        id: 'user_clara',
-        name: 'Clara Mendes',
-        email: 'clara@orb.co',
-        avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
-        bannerUrl: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=800&h=300&fit=crop',
-        bio: 'Designer UI/UX 🎨',
-        status: 'online',
-        ping: 18,
-        role: 'member',
-      },
-      {
-        id: 'user_lucas',
-        name: 'Lucas Rocha',
-        email: 'lucas@orb.co',
-        avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
-        bannerUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&h=300&fit=crop',
-        bio: 'Dev Fullstack 💻',
-        status: 'online',
-        ping: 22,
-        role: 'member',
-      }
-    ],
+    members: []
   }
 ];
 
@@ -168,80 +145,8 @@ export const PUBLIC_COMMUNITY_SERVERS: ServerData[] = [
   }
 ];
 
-// Initial Chat Messages
-export const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
-  {
-    id: 'msg_welcome_1',
-    channelId: 'chan_central_geral',
-    serverId: 'srv_orb_central',
-    userId: 'user_clara',
-    userName: 'Clara Mendes',
-    userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
-    content: 'Sejam bem-vindos ao Orb.co! Testem a chamada de voz em órbita e o compartilhamento simultâneo de tela 🪐✨',
-    timestamp: '10:00'
-  }
-];
+// Initial Chat Messages (Zero bots)
+export const INITIAL_CHAT_MESSAGES: ChatMessage[] = [];
 
-// Friends Matching the User's Reference Image (Image 1)
-export const INITIAL_FRIENDS: Friend[] = [
-  {
-    id: 'friend_marina',
-    accountId: '1042',
-    name: 'Marina',
-    tag: 'marina#1042',
-    email: 'marina@orb.co',
-    avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
-    status: 'online',
-    customStatus: 'Viu a nova interface? 👀',
-    bio: 'Designer UI/UX no Orb.co ✨',
-    ping: 18,
-  },
-  {
-    id: 'friend_theo',
-    accountId: '2914',
-    name: 'Theo',
-    tag: 'theo#2914',
-    email: 'theo@orb.co',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
-    status: 'online',
-    customStatus: 'Bora call mais tarde?',
-    bio: 'Desenvolvedor Frontend & Gamer 🎮',
-    ping: 22,
-  },
-  {
-    id: 'friend_luiza',
-    accountId: '5819',
-    name: 'Luiza',
-    tag: 'luiza#5819',
-    email: 'luiza@orb.co',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
-    status: 'idle',
-    customStatus: 'Diga oi!',
-    bio: 'Ilustradora Cósmica 🪐',
-    ping: 30,
-  },
-  {
-    id: 'friend_caio',
-    accountId: '7721',
-    name: 'Caio',
-    tag: 'caio#7721',
-    email: 'caio@orb.co',
-    avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces',
-    status: 'offline',
-    customStatus: 'Diga oi!',
-    bio: 'Offline no momento',
-    ping: 45,
-  },
-  {
-    id: 'friend_bia',
-    accountId: '3390',
-    name: 'Bia',
-    tag: 'bia#3390',
-    email: 'bia@orb.co',
-    avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=faces',
-    status: 'online',
-    customStatus: 'Diga oi!',
-    bio: 'Ouvindo música no Orbit 🎧',
-    ping: 24,
-  },
-];
+// Friends List: Zero bots. Only real accounts added by users.
+export const INITIAL_FRIENDS: Friend[] = [];

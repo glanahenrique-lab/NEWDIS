@@ -80,6 +80,13 @@ export interface ChatMessage {
   reactions?: Record<string, number>;
 }
 
+export interface ServerInviteAttachment {
+  serverId: string;
+  serverName: string;
+  serverIcon: string;
+  serverDescription?: string;
+}
+
 export interface DirectMessage {
   id: string;
   friendId: string;
@@ -88,7 +95,25 @@ export interface DirectMessage {
   senderAvatar: string;
   content: string;
   attachmentUrl?: string;
+  serverInvite?: ServerInviteAttachment;
   timestamp: string;
+}
+
+export interface FriendRequest {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderTag: string;
+  senderAccountId: string;
+  senderEmail: string;
+  senderAvatar: string;
+  receiverId: string;
+  receiverName?: string;
+  receiverTag?: string;
+  receiverAccountId?: string;
+  receiverEmail?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: string;
 }
 
 export interface Friend {
@@ -102,6 +127,7 @@ export interface Friend {
   customStatus?: string;
   bio?: string;
   ping?: number;
+  isConfirmed?: boolean;
 }
 
 export interface SoundItem {

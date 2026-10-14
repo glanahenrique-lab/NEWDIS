@@ -71,7 +71,8 @@ export const Sidebar: React.FC = () => {
     setInviteModalOpen,
     openServerModal,
     callFriend,
-    showToast
+    showToast,
+    pendingRequestsCount
   } = useOrbita();
 
   const [contextMenu, setContextMenu] = useState<{
@@ -134,6 +135,11 @@ export const Sidebar: React.FC = () => {
           title="Amigos e Conversas Diretas"
         >
           <Users className="w-5 h-5" />
+          {pendingRequestsCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center animate-pulse shadow-md">
+              {pendingRequestsCount}
+            </span>
+          )}
           {navigationMode === 'friends' && (
             <span className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-full bg-white"></span>
           )}

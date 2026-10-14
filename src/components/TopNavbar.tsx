@@ -39,7 +39,8 @@ export const TopNavbar: React.FC = () => {
     isViewingVoiceRoom,
     returnToVoiceRoom,
     voiceCallTitle,
-    watchParty
+    watchParty,
+    pendingRequestsCount
   } = useOrbita();
 
   const [paletteMenuOpen, setPaletteMenuOpen] = useState(false);
@@ -99,10 +100,19 @@ export const TopNavbar: React.FC = () => {
             <span className="truncate max-w-[140px] font-semibold">{currentServer.name}</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs font-medium text-indigo-300">
+          <button
+            onClick={handleLogoClick}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-xs font-medium text-indigo-300 transition-colors cursor-pointer"
+            title="Ir para tela de Amigos"
+          >
             <Users className="w-3.5 h-3.5" />
             <span>Amigos</span>
-          </div>
+            {pendingRequestsCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center animate-pulse">
+                {pendingRequestsCount}
+              </span>
+            )}
+          </button>
         )}
       </div>
 

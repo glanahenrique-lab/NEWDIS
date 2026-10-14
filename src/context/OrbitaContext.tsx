@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   UserProfile, 
   ServerData, 
@@ -10,6 +10,8 @@ import {
   LiveCaption,
   Friend,
   DirectMessage,
+  FriendRequest,
+  ServerInviteAttachment,
   AppTheme,
   WatchPartySession,
   ScreenShareStream,
@@ -31,6 +33,9 @@ import {
   setDoc, 
   deleteDoc,
   getDocFromServer,
+  collection,
+  getDocs,
+  updateDoc,
   onSnapshot,
   handleFirestoreError,
   OperationType,
@@ -52,6 +57,7 @@ const STORAGE_KEYS = {
   ACCENT: 'orbita_accent_color_v3',
   BG_COLOR: 'orbita_bg_color_v3',
   ACCOUNTS: 'orbita_registered_accounts_v4',
+  FRIEND_REQUESTS: 'orbita_friend_requests_v4',
 };
 
 // Automatic one-time cleanup to satisfy: "Exclua todas as contas registradas"
@@ -277,11 +283,21 @@ interface OrbitaContextType {
   sendMessage: (content: string, attachmentUrl?: string) => void;
   sendDirectMessage: (content: string, attachmentUrl?: string) => void;
   
-  // Friend & Call Actions
-  addFriend: (tagOrName: string) => { success: boolean; message: string };
+  // Friend & Friend Request Actions
+  friendRequests: FriendRequest[];
+  incomingFriendRequests: FriendRequest[];
+  outgoingFriendRequests: FriendRequest[];
+  pendingRequestsCount: number;
+  registeredAccountsList: UserProfile[];
+  sendFriendRequest: (tagOrIdOrEmail: string) => Promise<{ success: boolean; message: string }>;
+  addFriend: (tagOrIdOrEmail: string) => Promise<{ success: boolean; message: string }>;
+  acceptFriendRequest: (requestId: string) => Promise<void>;
+  declineFriendRequest: (requestId: string) => Promise<void>;
+  cancelFriendRequest: (requestId: string) => Promise<void>;
   removeFriend: (friendId: string) => void;
   callFriend: (friend: Friend) => void;
   inviteFriendToCurrentCall: (friend: Friend) => void;
+  sendServerInviteToFriend: (friendId: string, serverId: string) => void;
   
   // Voice & Video Actions
   connectVoice: (channel?: Channel) => void;
@@ -397,6 +413,85 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [directMessages, setDirectMessages] = useState<Record<string, DirectMessage[]>>(() =>
     loadStorage<Record<string, DirectMessage[]>>(STORAGE_KEYS.DMS, {})
   );
+
+  // Friend Requests: persistent real account friend requests
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>(() =>
+    loadStorage<FriendRequest[]>(STORAGE_KEYS.FRIEND_REQUESTS, [])
+  );
+
+  const incomingFriendRequests = useMemo(() => {
+    return friendRequests.filter(r => 
+      r.status === 'pending' && (
+        r.receiverId === currentUser.id ||
+        (r.receiverAccountId && currentUser.accountId && r.receiverAccountId === currentUser.accountId) ||
+        (r.receiverEmail && currentUser.email && r.receiverEmail.toLowerCase() === currentUser.email.toLowerCase())
+      )
+    );
+  }, [friendRequests, currentUser]);
+
+  const outgoingFriendRequests = useMemo(() => {
+    return friendRequests.filter(r => r.status === 'pending' && r.senderId === currentUser.id);
+  }, [friendRequests, currentUser]);
+
+  const pendingRequestsCount = incomingFriendRequests.length;
+
+  const [registeredAccountsList, setRegisteredAccountsList] = useState<UserProfile[]>(() => {
+    const accs = loadStorage<RegisteredAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
+    return accs.map(a => a.profile);
+  });
+
+  // Listen for storage events (multi-tab / account switching in other tabs)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEYS.FRIEND_REQUESTS && e.newValue) {
+        try {
+          setFriendRequests(JSON.parse(e.newValue));
+        } catch {}
+      }
+      if (e.key === STORAGE_KEYS.FRIENDS && e.newValue) {
+        try {
+          setFriends(JSON.parse(e.newValue));
+        } catch {}
+      }
+      if (e.key === STORAGE_KEYS.DMS && e.newValue) {
+        try {
+          setDirectMessages(JSON.parse(e.newValue));
+        } catch {}
+      }
+      if (e.key === STORAGE_KEYS.ACCOUNTS && e.newValue) {
+        try {
+          const accs = JSON.parse(e.newValue) as RegisteredAccount[];
+          setRegisteredAccountsList(accs.map(a => a.profile));
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // Listen to Firestore friend_requests collection in real-time
+  useEffect(() => {
+    try {
+      const q = collection(db, 'friend_requests');
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const remoteRequests: FriendRequest[] = [];
+        snapshot.forEach((docSnap) => {
+          remoteRequests.push({ id: docSnap.id, ...docSnap.data() } as FriendRequest);
+        });
+        if (remoteRequests.length > 0) {
+          setFriendRequests(prev => {
+            const map = new Map<string, FriendRequest>();
+            prev.forEach(r => map.set(r.id, r));
+            remoteRequests.forEach(r => map.set(r.id, r));
+            const merged = Array.from(map.values());
+            saveStorage(STORAGE_KEYS.FRIEND_REQUESTS, merged);
+            return merged;
+          });
+        }
+      }, () => {});
+      return () => unsubscribe();
+    } catch {}
+  }, []);
 
   // Messages: starts clean or loaded from persistent storage
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
@@ -735,10 +830,10 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [inVoiceCall]);
 
-  // Add Friend by ID, Tag, Email or Nick - synced to Firestore
-  const addFriend = useCallback((query: string) => {
+  // Send Friend Request to a REAL registered account (Zero bots!)
+  const sendFriendRequest = useCallback(async (query: string): Promise<{ success: boolean; message: string }> => {
     const clean = query.trim();
-    if (!clean) return { success: false, message: 'Digite o ID, Tag, Nick ou E-mail do amigo.' };
+    if (!clean) return { success: false, message: 'Digite o ID (#), Tag, Nick ou E-mail da conta.' };
 
     const normalized = clean.toLowerCase();
     const rawId = clean.startsWith('#') ? clean.substring(1) : clean;
@@ -751,11 +846,12 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (
       (rawId && rawId === myId) ||
+      clean === currentUser.id ||
       normalized === myTag ||
       (myEmail && normalized === myEmail) ||
       normalized === myName
     ) {
-      return { success: false, message: 'Você não pode adicionar a si mesmo como amigo!' };
+      return { success: false, message: 'Você não pode enviar solicitação de amizade para si mesmo!' };
     }
 
     // 2. Check if already in friends list
@@ -768,120 +864,263 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
 
     if (existingFriend) {
-      setActiveFriendId(existingFriend.id);
-      setNavigationMode('friends');
-      showToast(`${existingFriend.name} já está na sua lista! Conversa aberta.`, 'info');
-      return { success: true, message: `${existingFriend.name} já é seu amigo! Abrindo conversa.` };
+      return { success: false, message: `${existingFriend.name} já é seu amigo(a)!` };
     }
 
-    // 3. Search in registered accounts (STORAGE_KEYS.ACCOUNTS)
+    // 3. Search in registered accounts (STORAGE_KEYS.ACCOUNTS and Firestore users collection)
     const registeredAccounts = loadStorage<RegisteredAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
-    const foundAccount = registeredAccounts.find(a => 
+    let targetAccount = registeredAccounts.find(a => 
       (a.profile.accountId && a.profile.accountId === rawId) ||
       (a.profile.tag && a.profile.tag.toLowerCase() === normalized) ||
       a.email.toLowerCase() === normalized ||
-      a.name.toLowerCase() === normalized
+      a.name.toLowerCase() === normalized ||
+      a.id === clean
     );
 
-    // 4. Search in INITIAL_FRIENDS presets (Marina, Theo, Luiza, Caio, Bia)
-    const foundPreset = INITIAL_FRIENDS.find(p => 
-      (p.accountId && p.accountId === rawId) ||
-      p.tag.toLowerCase() === normalized ||
-      (p.email && p.email.toLowerCase() === normalized) ||
-      p.name.toLowerCase() === normalized
-    );
+    // If not in local accounts, try Firestore users collection
+    if (!targetAccount) {
+      try {
+        const usersSnapshot = await getDocs(collection(db, 'users'));
+        for (const userDoc of usersSnapshot.docs) {
+          const udata = userDoc.data();
+          const uAccountId = udata.accountId || '';
+          const uTag = (udata.tag || '').toLowerCase();
+          const uEmail = (udata.email || '').toLowerCase();
+          const uName = (udata.name || '').toLowerCase();
+          if (
+            (rawId && uAccountId === rawId) ||
+            userDoc.id === clean ||
+            uTag === normalized ||
+            (uEmail && uEmail === normalized) ||
+            uName === normalized
+          ) {
+            const foundProfile: UserProfile = {
+              id: userDoc.id,
+              accountId: uAccountId,
+              name: udata.name || 'Usuário Orb',
+              tag: udata.tag || `${udata.name || 'usuario'}#${uAccountId}`,
+              email: udata.email || '',
+              avatarUrl: udata.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=faces',
+              bannerUrl: udata.bannerUrl || 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
+              status: udata.status || 'online',
+              customStatus: udata.customStatus || 'Disponível no Orb.co 🪐',
+              bio: udata.bio || 'Membro do Orb.co',
+              ping: udata.ping || 18,
+            };
 
-    let newFriend: Friend;
-
-    if (foundAccount) {
-      const prof = foundAccount.profile;
-      const accountId = prof.accountId || generateAccountId();
-      newFriend = {
-        id: prof.id,
-        accountId: accountId,
-        name: prof.name,
-        tag: prof.tag || `${prof.name.toLowerCase()}#${accountId}`,
-        email: prof.email,
-        avatarUrl: prof.avatarUrl,
-        status: prof.status || 'online',
-        customStatus: prof.customStatus || 'Disponível no Orb.co 🪐',
-        bio: prof.bio || 'Amigo no Orb.co',
-        ping: prof.ping || 18,
-      };
-    } else if (foundPreset) {
-      newFriend = {
-        ...foundPreset,
-        id: `friend_${foundPreset.name.toLowerCase()}_${Date.now()}`
-      };
-    } else {
-      // 5. If not found in presets: create friend with parsed parameters so user is never blocked!
-      const isEmail = clean.includes('@') && clean.includes('.');
-      const isOnlyDigits = /^\d{3,6}$/.test(rawId);
-
-      let friendName = clean;
-      let friendTag = clean;
-      let friendIdNum = generateAccountId();
-      let friendEmail: string | undefined = undefined;
-
-      if (isEmail) {
-        friendEmail = clean.toLowerCase();
-        friendName = clean.split('@')[0];
-        friendTag = `${friendName.toLowerCase()}#${friendIdNum}`;
-      } else if (isOnlyDigits) {
-        friendIdNum = rawId;
-        friendName = `Amigo #${rawId}`;
-        friendTag = `amigo#${rawId}`;
-      } else if (clean.includes('#')) {
-        const parts = clean.split('#');
-        friendName = parts[0] || 'Amigo';
-        friendIdNum = parts[1] || generateAccountId();
-        friendTag = `${friendName.toLowerCase()}#${friendIdNum}`;
-      } else {
-        friendName = clean;
-        friendTag = `${clean.toLowerCase()}#${friendIdNum}`;
+            targetAccount = {
+              id: userDoc.id,
+              email: udata.email || '',
+              passwordHash: '',
+              name: udata.name || 'Usuário Orb',
+              createdAt: new Date().toISOString(),
+              profile: foundProfile
+            };
+            // Cache found account locally
+            const updatedAccs: RegisteredAccount[] = [...registeredAccounts, targetAccount];
+            saveStorage(STORAGE_KEYS.ACCOUNTS, updatedAccs);
+            setRegisteredAccountsList(updatedAccs.map(acc => acc.profile));
+            break;
+          }
+        }
+      } catch (err) {
+        console.warn('Firestore user search note:', err);
       }
+    }
 
-      const avatarPool = [
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
-        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
-        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces',
-        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=faces',
-      ];
-      const avatarUrl = avatarPool[Math.floor(Math.random() * avatarPool.length)];
-
-      newFriend = {
-        id: `friend_${Date.now()}`,
-        accountId: friendIdNum,
-        name: friendName,
-        tag: friendTag,
-        email: friendEmail,
-        avatarUrl: avatarUrl,
-        status: 'online',
-        customStatus: 'Disponível no Orb.co 🪐',
-        bio: `Amigo no Orb.co (${friendTag})`,
-        ping: Math.floor(Math.random() * 20 + 15),
+    // ZERO BOTS: If no real registered account exists, fail with clear message!
+    if (!targetAccount) {
+      return { 
+        success: false, 
+        message: 'Nenhuma conta encontrada com este ID, Tag ou E-mail. Só é possível adicionar pessoas que tenham uma conta registrada no Orb.co.' 
       };
     }
 
-    setFriends(prev => {
-      const updated = [newFriend, ...prev.filter(f => f.tag.toLowerCase() !== newFriend.tag.toLowerCase())];
-      saveStorage(STORAGE_KEYS.FRIENDS, updated);
+    const targetProf = targetAccount.profile;
+    const targetAccountId = targetProf.accountId || generateAccountId();
+    const targetTag = targetProf.tag || `${targetProf.name}#${targetAccountId}`;
 
+    // 4. Check if request already pending
+    const alreadySent = friendRequests.find(r => 
+      r.status === 'pending' && 
+      r.senderId === currentUser.id && 
+      (r.receiverId === targetProf.id || r.receiverAccountId === targetAccountId)
+    );
+    if (alreadySent) {
+      return { success: false, message: `Você já enviou uma solicitação para ${targetProf.name}. Aguarde ele(a) confirmar!` };
+    }
+
+    const alreadyReceived = friendRequests.find(r => 
+      r.status === 'pending' && 
+      (r.senderId === targetProf.id || r.senderAccountId === targetAccountId) &&
+      (r.receiverId === currentUser.id || r.receiverAccountId === currentUser.accountId)
+    );
+    if (alreadyReceived) {
+      return { success: false, message: `${targetProf.name} já te enviou uma solicitação! Vá na aba Pendentes para aceitar.` };
+    }
+
+    // 5. Create pending FriendRequest
+    const newRequest: FriendRequest = {
+      id: `fr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderTag: currentUser.tag || `${currentUser.name}#${currentUser.accountId || '1001'}`,
+      senderAccountId: currentUser.accountId || '1001',
+      senderEmail: currentUser.email || '',
+      senderAvatar: currentUser.avatarUrl,
+      receiverId: targetProf.id,
+      receiverName: targetProf.name,
+      receiverTag: targetTag,
+      receiverAccountId: targetAccountId,
+      receiverEmail: targetAccount.email || '',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+
+    setFriendRequests(prev => {
+      const updated = [newRequest, ...prev.filter(r => r.id !== newRequest.id)];
+      saveStorage(STORAGE_KEYS.FRIEND_REQUESTS, updated);
+      return updated;
+    });
+
+    // Sync to Firestore
+    setDoc(doc(db, 'friend_requests', newRequest.id), cleanFirestorePayload(newRequest)).catch(() => {});
+
+    soundEngine.playBuiltinSound('friend_add', 0.6);
+    showToast(`Solicitação de amizade enviada para ${targetProf.name}! Aguardando confirmação.`, 'success');
+    return { success: true, message: `Solicitação de amizade enviada para ${targetProf.name} (ID: #${targetAccountId})! Aguardando confirmação.` };
+  }, [currentUser, friends, friendRequests, showToast]);
+
+  // Alias addFriend to sendFriendRequest
+  const addFriend = sendFriendRequest;
+
+  // Accept / Confirm Friend Request
+  const acceptFriendRequest = useCallback(async (requestId: string) => {
+    const req = friendRequests.find(r => r.id === requestId);
+    if (!req) return;
+
+    // 1. Update request status to accepted
+    const updatedRequests = friendRequests.map(r => r.id === requestId ? { ...r, status: 'accepted' as const } : r);
+    setFriendRequests(updatedRequests);
+    saveStorage(STORAGE_KEYS.FRIEND_REQUESTS, updatedRequests);
+    setDoc(doc(db, 'friend_requests', requestId), { status: 'accepted' }, { merge: true }).catch(() => {});
+
+    // 2. Add sender as friend for the receiver (current user)
+    const newFriendForMe: Friend = {
+      id: req.senderId,
+      accountId: req.senderAccountId,
+      name: req.senderName,
+      tag: req.senderTag,
+      email: req.senderEmail,
+      avatarUrl: req.senderAvatar,
+      status: 'online',
+      customStatus: 'Amigo confirmado no Orb.co 🪐',
+      bio: `Membro do Orb.co (${req.senderTag})`,
+      ping: 18,
+      isConfirmed: true,
+    };
+
+    setFriends(prev => {
+      const updated = [newFriendForMe, ...prev.filter(f => f.id !== newFriendForMe.id)];
+      saveStorage(STORAGE_KEYS.FRIENDS, updated);
       if (auth.currentUser) {
         const userRef = doc(db, 'users', auth.currentUser.uid);
         setDoc(userRef, { friends: cleanFirestorePayload(updated) }, { merge: true }).catch(() => {});
       }
+      return updated;
+    });
 
+    // 3. Reciprocal: Add current user as friend for the sender in Firestore if possible
+    try {
+      const senderRef = doc(db, 'users', req.senderId);
+      const senderSnap = await getDocFromServer(senderRef).catch(() => null);
+      if (senderSnap && senderSnap.exists()) {
+        const senderData = senderSnap.data();
+        const existingFriends = senderData.friends || [];
+        const meAsFriend: Friend = {
+          id: currentUser.id,
+          accountId: currentUser.accountId || '1001',
+          name: currentUser.name,
+          tag: currentUser.tag || `${currentUser.name}#${currentUser.accountId || '1001'}`,
+          email: currentUser.email,
+          avatarUrl: currentUser.avatarUrl,
+          status: 'online',
+          customStatus: 'Amigo confirmado no Orb.co 🪐',
+          bio: `Membro do Orb.co (${currentUser.tag})`,
+          ping: 18,
+          isConfirmed: true,
+        };
+        const updatedSenderFriends = [meAsFriend, ...existingFriends.filter((f: Friend) => f.id !== meAsFriend.id)];
+        await setDoc(senderRef, { friends: cleanFirestorePayload(updatedSenderFriends) }, { merge: true }).catch(() => {});
+      }
+    } catch {}
+
+    soundEngine.playBuiltinSound('call_connect', 0.7);
+    showToast(`Solicitação de @${req.senderName} aceita! Agora vocês podem conversar e enviar convites de servidor.`, 'success');
+  }, [friendRequests, currentUser, showToast]);
+
+  // Decline / Recusar Friend Request
+  const declineFriendRequest = useCallback(async (requestId: string) => {
+    const updatedRequests = friendRequests.filter(r => r.id !== requestId);
+    setFriendRequests(updatedRequests);
+    saveStorage(STORAGE_KEYS.FRIEND_REQUESTS, updatedRequests);
+    deleteDoc(doc(db, 'friend_requests', requestId)).catch(() => {});
+    showToast('Solicitação de amizade recusada.', 'info');
+  }, [friendRequests, showToast]);
+
+  // Cancel Outgoing Friend Request
+  const cancelFriendRequest = useCallback(async (requestId: string) => {
+    const updatedRequests = friendRequests.filter(r => r.id !== requestId);
+    setFriendRequests(updatedRequests);
+    saveStorage(STORAGE_KEYS.FRIEND_REQUESTS, updatedRequests);
+    deleteDoc(doc(db, 'friend_requests', requestId)).catch(() => {});
+    showToast('Solicitação de amizade cancelada.', 'info');
+  }, [friendRequests, showToast]);
+
+  // Send Server Invite to Friend in DM
+  const sendServerInviteToFriend = useCallback((friendId: string, serverId: string) => {
+    const targetServer = servers.find(s => s.id === serverId);
+    if (!targetServer) {
+      showToast('Servidor não encontrado.', 'error');
+      return;
+    }
+
+    const targetFriend = friends.find(f => f.id === friendId);
+    if (!targetFriend) {
+      showToast('Amigo não encontrado.', 'error');
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const inviteDM: DirectMessage = {
+      id: `dm_invite_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      friendId: friendId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatarUrl,
+      content: `Convite para participar do servidor **${targetServer.name}**!`,
+      serverInvite: {
+        serverId: targetServer.id,
+        serverName: targetServer.name,
+        serverIcon: targetServer.iconUrl || '🪐',
+        serverDescription: targetServer.description || 'Entre no servidor e participe dos canais de texto e voz!',
+      },
+      timestamp: timeStr,
+    };
+
+    setDirectMessages(prev => {
+      const updated = {
+        ...prev,
+        [friendId]: [...(prev[friendId] || []), inviteDM]
+      };
+      saveStorage(STORAGE_KEYS.DMS, updated);
       return updated;
     });
 
     soundEngine.playBuiltinSound('friend_add', 0.6);
-    setActiveFriendId(newFriend.id);
-    setNavigationMode('friends');
-    showToast(`Amigo @${newFriend.name} (ID: #${newFriend.accountId}) adicionado!`, 'success');
-    return { success: true, message: `Amigo ${newFriend.name} adicionado com sucesso! Abrindo conversa.` };
-  }, [currentUser, friends, showToast]);
+    showToast(`Convite do servidor "${targetServer.name}" enviado para @${targetFriend.name}!`, 'success');
+  }, [servers, friends, currentUser, showToast]);
 
   const removeFriend = useCallback((friendId: string) => {
     setFriends(prev => {
@@ -1299,47 +1538,8 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return updated;
     });
 
-    // Check if chatting with one of the initial friends (Marina, Theo, Luiza, Caio, Bia)
-    const targetFriend = friends.find(f => f.id === activeFriendId);
-    if (targetFriend) {
-      const fName = targetFriend.name.toLowerCase();
-      let replyText: string | null = null;
-      if (fName.includes('marina')) {
-        replyText = 'Opa! Que legal conversar individualmente! O Orb.co ficou incrível 🪐✨';
-      } else if (fName.includes('theo')) {
-        replyText = 'E aí! Mensagem recebida perfeitamente. Se quiser podemos abrir uma call de voz também!';
-      } else if (fName.includes('luiza')) {
-        replyText = 'Oi! Adorei a mensagem! Estava terminando uma ilustração aqui no Orb 🎨';
-      } else if (fName.includes('bia')) {
-        replyText = 'Oi oi! Tudo bem? Ouvindo música aqui no lounge 🎧';
-      } else if (fName.includes('caio')) {
-        replyText = 'Fala comigo! Valeu pela mensagem individual!';
-      }
-
-      if (replyText) {
-        setTimeout(() => {
-          const replyDM: DirectMessage = {
-            id: `dm_reply_${Date.now()}`,
-            friendId: activeFriendId,
-            senderId: targetFriend.id,
-            senderName: targetFriend.name,
-            senderAvatar: targetFriend.avatarUrl,
-            content: replyText!,
-            timestamp: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
-          };
-          setDirectMessages(prev => {
-            const updated = {
-              ...prev,
-              [activeFriendId]: [...(prev[activeFriendId] || []), replyDM]
-            };
-            saveStorage(STORAGE_KEYS.DMS, updated);
-            return updated;
-          });
-          soundEngine.playBuiltinSound('join', 0.4);
-        }, 1100);
-      }
-    }
-  }, [activeFriendId, currentUser, friends]);
+    soundEngine.playBuiltinSound('message_send', 0.4);
+  }, [activeFriendId, currentUser]);
 
   // Soundboard
   const playSound = useCallback((sound: SoundItem) => {
@@ -1760,7 +1960,7 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         name: userName,
         tag: data.tag || `${userName.toLowerCase().replace(/\s+/g, '')}#${accountId}`,
         email: fbUser.email || '',
-        avatarUrl: data.avatarUrl || fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${fbUser.uid}`,
+        avatarUrl: data.avatarUrl || fbUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=faces',
         bannerUrl: data.bannerUrl || 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
         bio: data.bio !== undefined ? data.bio : 'Membro do Orb.co.',
         status: data.status || 'online',
@@ -1796,7 +1996,7 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${accountId}`,
         email: fbUser.email || '',
         bio: 'Membro do Orb.co.',
-        avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${fbUser.uid}`,
+        avatarUrl: fbUser.photoURL || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=faces',
         bannerUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
         status: 'online',
         ping: 18,
@@ -1922,6 +2122,16 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const hash = await hashPassword(password);
     const accountId = generateAccountId();
 
+    const humanAvatars = [
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=faces',
+      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=faces'
+    ];
+    const pickedAvatar = humanAvatars[Math.floor(Math.random() * humanAvatars.length)];
+
     const newProf: UserProfile = {
       id: localUid,
       accountId: accountId,
@@ -1929,7 +2139,7 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${accountId}`,
       email: cleanEmail,
       bio: 'Membro do Orb.co.',
-      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${localUid}`,
+      avatarUrl: pickedAvatar,
       bannerUrl: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
       status: 'online',
       ping: 18,
@@ -1947,6 +2157,7 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     saveStorage(STORAGE_KEYS.ACCOUNTS, accounts);
+    setRegisteredAccountsList(accounts.map(a => a.profile));
     setCurrentUser(newProf);
     saveStorage(STORAGE_KEYS.USER, newProf);
 
@@ -2033,6 +2244,7 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       localStorage.removeItem('orbita_registered_accounts_v3');
       localStorage.removeItem('orbita_registered_accounts_v4');
       localStorage.removeItem(STORAGE_KEYS.ACCOUNTS);
+      localStorage.removeItem(STORAGE_KEYS.FRIEND_REQUESTS);
       localStorage.removeItem(STORAGE_KEYS.USER);
       localStorage.removeItem(STORAGE_KEYS.SERVERS);
       localStorage.removeItem(STORAGE_KEYS.FRIENDS);
@@ -2051,6 +2263,8 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setCurrentUser(cleanUser);
     setFriends(INITIAL_FRIENDS);
+    setFriendRequests([]);
+    setRegisteredAccountsList([]);
     setDirectMessages({});
     setMessages(INITIAL_CHAT_MESSAGES);
     setServers(INITIAL_SERVERS);
@@ -2193,7 +2407,17 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       sendMessage,
       sendDirectMessage,
+      friendRequests,
+      incomingFriendRequests,
+      outgoingFriendRequests,
+      pendingRequestsCount,
+      registeredAccountsList,
+      sendFriendRequest,
       addFriend,
+      acceptFriendRequest,
+      declineFriendRequest,
+      cancelFriendRequest,
+      sendServerInviteToFriend,
       removeFriend,
       callFriend,
       inviteFriendToCurrentCall,
