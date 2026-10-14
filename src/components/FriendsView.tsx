@@ -12,7 +12,9 @@ import {
   X, 
   Check,
   MoreVertical,
-  Volume2
+  Volume2,
+  Copy,
+  Sparkles
 } from 'lucide-react';
 import { Friend, UserProfile } from '../types';
 import { UserContextMenu } from './UserContextMenu';
@@ -36,7 +38,8 @@ export const FriendsView: React.FC = () => {
     sendDirectMessage,
     startPrivateCall,
     callFriend,
-    currentUser
+    currentUser,
+    showToast
   } = useOrbita();
 
   const [activeFilter, setActiveFilter] = useState<'online' | 'todos'>('online');
@@ -140,12 +143,21 @@ export const FriendsView: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2 font-bold text-sm text-white">
                   <span>{activeFriend.name}</span>
-                  <span className="text-[11px] text-slate-400 font-mono font-normal">
-                    {activeFriend.tag}
+                  <span className="text-xs text-cyan-400 font-mono font-bold bg-cyan-500/15 px-1.5 py-0.5 rounded-md">
+                    ID: #{activeFriend.accountId || activeFriend.tag.split('#')[1]}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono font-normal hidden sm:inline-block">
+                    ({activeFriend.tag})
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-400">
-                  {activeFriend.customStatus || getStatusLabel(activeFriend.status)}
+                <div className="text-[11px] text-slate-400 flex items-center gap-2">
+                  <span>{activeFriend.customStatus || getStatusLabel(activeFriend.status)}</span>
+                  {activeFriend.email && (
+                    <>
+                      <span>•</span>
+                      <span className="text-slate-400 font-mono text-[10px]">{activeFriend.email}</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -233,11 +245,54 @@ export const FriendsView: React.FC = () => {
     );
   }
 
-  // 2. Main Friends Hub Layout (Directly matching Image 1 - image.png)
+  // 2. Main Friends Hub Layout
   return (
     <div className="flex-1 flex flex-col h-full bg-theme-main p-4 sm:p-6 overflow-y-auto select-none transition-colors">
       <div className="w-full max-w-5xl mx-auto space-y-6">
         
+        {/* Your Own Identity Banner with Automatic ID, Tag and Email */}
+        <div className="bubble-card rounded-2xl p-4 border border-cyan-500/20 bg-gradient-to-r from-cyan-950/20 via-indigo-950/20 to-purple-950/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-lg">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative shrink-0">
+              <img 
+                src={currentUser.avatarUrl} 
+                alt={currentUser.name} 
+                className="w-11 h-11 rounded-2xl object-cover border border-cyan-400/40 shadow-md" 
+              />
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-theme"></span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm sm:text-base text-white truncate">{currentUser.name}</span>
+                <span className="text-xs px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-mono font-bold">
+                  ID: #{currentUser.accountId || currentUser.tag?.split('#')[1] || '1001'}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-x-2 mt-0.5">
+                <span className="font-mono text-slate-300">{currentUser.tag || `${currentUser.name}#${currentUser.accountId || '1001'}`}</span>
+                <span>•</span>
+                <span className="text-slate-400 truncate">{currentUser.email || 'usuario@orb.co'}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                const tagToCopy = currentUser.tag || `${currentUser.name}#${currentUser.accountId || '1001'}`;
+                navigator.clipboard.writeText(tagToCopy);
+                showToast(`Tag ${tagToCopy} copiada! Compartilhe com amigos.`, 'success');
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+              title="Copiar minha Tag (Nick#ID) para amigos me adicionarem"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copiar Minha Tag</span>
+            </button>
+          </div>
+        </div>
+
         {/* Top Header: "Amigos", "Sua órbita" */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -245,7 +300,7 @@ export const FriendsView: React.FC = () => {
               Amigos
             </h1>
             <p className="text-xs sm:text-sm font-semibold text-slate-300 mt-1">
-              Sua órbita
+              Sua órbita • Converse individualmente ou entre nos canais de texto do servidor
             </p>
           </div>
 
@@ -274,14 +329,14 @@ export const FriendsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Add Friend Input Bar (Exact match to Image 1) */}
+        {/* Add Friend Input Bar */}
         <form onSubmit={handleAddFriendSubmit} className="space-y-2">
           <div className="bubble-card rounded-2xl p-1.5 flex items-center gap-2 border border-white/10 shadow-lg focus-within:border-cyan-400/50 transition-all">
             <input 
               type="text" 
               value={friendInput}
               onChange={(e) => setFriendInput(e.target.value)}
-              placeholder="Adicionar amigo pelo nome de usuário..."
+              placeholder="Adicionar por ID (ex: 1042), Tag (ex: marina#1042), Nick ou E-mail..."
               className="flex-1 bg-transparent px-4 py-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none"
             />
             <button
@@ -292,6 +347,10 @@ export const FriendsView: React.FC = () => {
               Adicionar
             </button>
           </div>
+
+          <p className="text-[11px] text-slate-400 px-1">
+            💡 Adicione amigos usando o <strong>ID numérico gerado automaticamente</strong> (ex: 1042), a <strong>Tag completa</strong> (ex: marina#1042) ou o <strong>E-mail</strong>.
+          </p>
 
           {addFeedback && (
             <div className={`p-3 rounded-xl text-xs flex items-center gap-2 animate-fade-in ${
@@ -304,26 +363,32 @@ export const FriendsView: React.FC = () => {
             </div>
           )}
 
-          {/* Quick Friend Suggestions */}
+          {/* Quick Friend Suggestions by ID and Email */}
           <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-400">
-            <span className="font-semibold text-slate-500">Sugestões rápidas:</span>
-            {['Gabriel#1092', 'Julia#4412', 'Rodrigo#7819', 'Fernanda#3201'].map(suggested => (
+            <span className="font-semibold text-slate-500">Sugestões rápidas para testar:</span>
+            {[
+              { label: 'Marina (ID: 1042)', val: '1042' },
+              { label: 'Theo (ID: 2914)', val: '2914' },
+              { label: 'Luiza (ID: 5819)', val: '5819' },
+              { label: 'caio@orb.co', val: 'caio@orb.co' },
+              { label: 'bia#3390', val: 'bia#3390' },
+            ].map(suggested => (
               <button
-                key={suggested}
+                key={suggested.val}
                 type="button"
                 onClick={() => {
-                  setFriendInput(suggested);
-                  addFriend(suggested);
+                  setFriendInput(suggested.val);
+                  addFriend(suggested.val);
                 }}
-                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 border border-white/10 transition-all cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-300 hover:text-cyan-300 border border-white/10 transition-all cursor-pointer flex items-center gap-1"
               >
-                <span>+ {suggested}</span>
+                <span>+ {suggested.label}</span>
               </button>
             ))}
           </div>
         </form>
 
-        {/* Section Counter: "3 ONLINE AGORA" */}
+        {/* Section Counter: "ONLINE AGORA" */}
         <div className="pt-2">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
             {activeFilter === 'online' ? `${onlineFriends.length} ONLINE AGORA` : `${friends.length} AMIGOS NO TOTAL`}
@@ -331,7 +396,7 @@ export const FriendsView: React.FC = () => {
         </div>
 
         {/* =========================================================================
-            THE BUBBLE GRID OF FRIENDS CARDS (Exact match to Image 1)
+            THE BUBBLE GRID OF FRIENDS CARDS
             ========================================================================= */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4.5">
           {displayedFriends.map((friend) => {
@@ -346,13 +411,13 @@ export const FriendsView: React.FC = () => {
               <div
                 key={friend.id}
                 onContextMenu={(e) => handleFriendContextMenu(e, friend)}
-                className="bubble-card rounded-3xl p-6 flex flex-col items-center justify-center relative group text-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-white/20 select-none animate-scale-in"
+                className="bubble-card rounded-3xl p-5 flex flex-col items-center justify-center relative group text-center cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-white/20 select-none animate-scale-in"
                 title={`${friend.name} • Clique para conversar (Botão direito para opções)`}
               >
-                {/* Large Circular Avatar with Initial Letter or Photo */}
+                {/* Large Circular Avatar */}
                 <div 
                   onClick={() => selectFriend(friend.id)}
-                  className="relative mb-3.5 group-hover:scale-105 transition-transform duration-300"
+                  className="relative mb-3 group-hover:scale-105 transition-transform duration-300"
                 >
                   <div className={`w-20 h-20 rounded-full flex items-center justify-center text-xl font-bold shadow-md border-2 transition-all ${palette.bg} ${palette.text} ${palette.border}`}>
                     {friend.avatarUrl ? (
@@ -370,43 +435,54 @@ export const FriendsView: React.FC = () => {
                   <span className={`absolute bottom-0 right-1 w-4 h-4 rounded-full border-2 border-[var(--theme-card)] transition-colors ${getStatusDot(friend.status)}`}></span>
                 </div>
 
-                {/* Friend Name */}
+                {/* Friend Name & Automatic ID */}
                 <h3 
                   onClick={() => selectFriend(friend.id)}
-                  className="text-sm font-bold text-white group-hover:text-[var(--theme-accent)] transition-colors tracking-tight"
+                  className="text-sm font-bold text-white group-hover:text-cyan-300 transition-colors tracking-tight flex items-center gap-1.5 justify-center"
                 >
-                  {friend.name}
+                  <span>{friend.name}</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono font-semibold">
+                    #{friend.accountId || friend.tag.split('#')[1]}
+                  </span>
                 </h3>
 
+                {/* Tag & Email */}
+                <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex flex-col items-center">
+                  <span>{friend.tag}</span>
+                  {friend.email && <span className="text-slate-500 text-[9px]">{friend.email}</span>}
+                </div>
+
                 {/* Status Text & Custom status */}
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-400 mt-1">
                   {getStatusLabel(friend.status)}
                 </p>
 
-                {/* Action Bubble Buttons (Message & Call) */}
-                <div className="flex items-center gap-2.5 mt-5">
-                  {/* Chat bubble button */}
+                {/* Action Buttons: Conversar & Ligar */}
+                <div className="flex items-center gap-2 mt-4 w-full">
+                  {/* Chat individual button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       selectFriend(friend.id);
                     }}
-                    className="w-10 h-10 rounded-2xl bg-white/[0.05] hover:bg-white/[0.12] text-slate-300 hover:text-white flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer shadow-sm border border-white/[0.08]"
-                    title={`Abrir mensagem com ${friend.name}`}
+                    className="flex-1 py-2 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.14] text-slate-200 hover:text-white flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm border border-white/[0.08]"
+                    title={`Conversar individualmente com ${friend.name}`}
                   >
-                    <MessageSquare className="w-4 h-4" />
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Conversar</span>
                   </button>
 
-                  {/* Call bubble button */}
+                  {/* Call direct button */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       callFriend(friend);
                     }}
-                    className="w-10 h-10 rounded-2xl bg-white/[0.05] hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer shadow-sm border border-white/[0.08]"
+                    className="py-2 px-3 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 flex items-center justify-center gap-1.5 text-xs font-semibold transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-sm border border-emerald-500/30"
                     title={`Ligar diretamente para ${friend.name}`}
                   >
-                    <Phone className="w-4 h-4" />
+                    <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Ligar</span>
                   </button>
                 </div>
               </div>

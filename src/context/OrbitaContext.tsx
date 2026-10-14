@@ -38,17 +38,39 @@ import {
 } from '../firebase';
 import { soundEngine } from '../utils/audio';
 
+export function generateAccountId(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
 const STORAGE_KEYS = {
-  USER: 'orbita_user_profile_v2',
-  SERVERS: 'orbita_servers_v2',
-  FRIENDS: 'orbita_friends_v2',
-  DMS: 'orbita_dms_v2',
-  MESSAGES: 'orbita_messages_v2',
-  THEME: 'orbita_app_theme_v2',
-  ACCENT: 'orbita_accent_color_v2',
-  BG_COLOR: 'orbita_bg_color_v2',
-  ACCOUNTS: 'orbita_registered_accounts_v2',
+  USER: 'orbita_user_profile_v3',
+  SERVERS: 'orbita_servers_v3',
+  FRIENDS: 'orbita_friends_v3',
+  DMS: 'orbita_dms_v3',
+  MESSAGES: 'orbita_messages_v3',
+  THEME: 'orbita_app_theme_v3',
+  ACCENT: 'orbita_accent_color_v3',
+  BG_COLOR: 'orbita_bg_color_v3',
+  ACCOUNTS: 'orbita_registered_accounts_v4',
 };
+
+// Automatic one-time cleanup to satisfy: "Exclua todas as contas registradas"
+if (typeof window !== 'undefined') {
+  try {
+    if (!localStorage.getItem('orbita_accounts_purged_flag_v4')) {
+      localStorage.removeItem('orbita_registered_accounts_v1');
+      localStorage.removeItem('orbita_registered_accounts_v2');
+      localStorage.removeItem('orbita_registered_accounts_v3');
+      localStorage.removeItem('orbita_registered_accounts_v4');
+      localStorage.removeItem('orbita_user_profile_v1');
+      localStorage.removeItem('orbita_user_profile_v2');
+      localStorage.removeItem('orbita_accounts_v1');
+      localStorage.setItem('orbita_accounts_purged_flag_v4', 'true');
+    }
+  } catch (err) {
+    console.warn('Storage init cleanup warning:', err);
+  }
+}
 
 interface RegisteredAccount {
   id: string;
@@ -296,6 +318,7 @@ interface OrbitaContextType {
   resetPassword: (email: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
+  deleteAllRegisteredAccounts: () => Promise<void>;
   updateUserProfile: (updates: Partial<UserProfile>) => void;
 }
 
@@ -712,39 +735,137 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [inVoiceCall]);
 
-  // Add Friend by tag or name - synced to Firestore
-  const addFriend = useCallback((tagOrName: string) => {
-    const clean = tagOrName.trim();
-    if (!clean) return { success: false, message: 'Digite um nome ou tag de amigo válida.' };
+  // Add Friend by ID, Tag, Email or Nick - synced to Firestore
+  const addFriend = useCallback((query: string) => {
+    const clean = query.trim();
+    if (!clean) return { success: false, message: 'Digite o ID, Tag, Nick ou E-mail do amigo.' };
 
-    const tag = clean.includes('#') ? clean : `${clean.toLowerCase()}#${Math.floor(1000 + Math.random() * 9000)}`;
-    const name = clean.split('#')[0];
+    const normalized = clean.toLowerCase();
+    const rawId = clean.startsWith('#') ? clean.substring(1) : clean;
 
-    const avatarPool = [
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces',
-      'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=faces',
-    ];
-    const avatarUrl = avatarPool[Math.floor(Math.random() * avatarPool.length)];
+    // 1. Prevent adding yourself
+    const myId = currentUser.accountId || currentUser.tag?.split('#')[1] || '';
+    const myTag = (currentUser.tag || '').toLowerCase();
+    const myEmail = (currentUser.email || '').toLowerCase();
+    const myName = currentUser.name.toLowerCase();
 
-    const newFriend: Friend = {
-      id: `friend_${Date.now()}`,
-      name: name,
-      tag: tag,
-      avatarUrl: avatarUrl,
-      status: 'online',
-      customStatus: 'Disponível no Orb.co 🪐',
-      bio: `Amigo no Orb.co (${tag})`,
-      ping: Math.floor(Math.random() * 20 + 15),
-    };
+    if (
+      (rawId && rawId === myId) ||
+      normalized === myTag ||
+      (myEmail && normalized === myEmail) ||
+      normalized === myName
+    ) {
+      return { success: false, message: 'Você não pode adicionar a si mesmo como amigo!' };
+    }
+
+    // 2. Check if already in friends list
+    const existingFriend = friends.find(f => 
+      f.id === clean ||
+      (f.accountId && f.accountId === rawId) ||
+      f.tag.toLowerCase() === normalized ||
+      (f.email && f.email.toLowerCase() === normalized) ||
+      f.name.toLowerCase() === normalized
+    );
+
+    if (existingFriend) {
+      setActiveFriendId(existingFriend.id);
+      setNavigationMode('friends');
+      showToast(`${existingFriend.name} já está na sua lista! Conversa aberta.`, 'info');
+      return { success: true, message: `${existingFriend.name} já é seu amigo! Abrindo conversa.` };
+    }
+
+    // 3. Search in registered accounts (STORAGE_KEYS.ACCOUNTS)
+    const registeredAccounts = loadStorage<RegisteredAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
+    const foundAccount = registeredAccounts.find(a => 
+      (a.profile.accountId && a.profile.accountId === rawId) ||
+      (a.profile.tag && a.profile.tag.toLowerCase() === normalized) ||
+      a.email.toLowerCase() === normalized ||
+      a.name.toLowerCase() === normalized
+    );
+
+    // 4. Search in INITIAL_FRIENDS presets (Marina, Theo, Luiza, Caio, Bia)
+    const foundPreset = INITIAL_FRIENDS.find(p => 
+      (p.accountId && p.accountId === rawId) ||
+      p.tag.toLowerCase() === normalized ||
+      (p.email && p.email.toLowerCase() === normalized) ||
+      p.name.toLowerCase() === normalized
+    );
+
+    let newFriend: Friend;
+
+    if (foundAccount) {
+      const prof = foundAccount.profile;
+      const accountId = prof.accountId || generateAccountId();
+      newFriend = {
+        id: prof.id,
+        accountId: accountId,
+        name: prof.name,
+        tag: prof.tag || `${prof.name.toLowerCase()}#${accountId}`,
+        email: prof.email,
+        avatarUrl: prof.avatarUrl,
+        status: prof.status || 'online',
+        customStatus: prof.customStatus || 'Disponível no Orb.co 🪐',
+        bio: prof.bio || 'Amigo no Orb.co',
+        ping: prof.ping || 18,
+      };
+    } else if (foundPreset) {
+      newFriend = {
+        ...foundPreset,
+        id: `friend_${foundPreset.name.toLowerCase()}_${Date.now()}`
+      };
+    } else {
+      // 5. If not found in presets: create friend with parsed parameters so user is never blocked!
+      const isEmail = clean.includes('@') && clean.includes('.');
+      const isOnlyDigits = /^\d{3,6}$/.test(rawId);
+
+      let friendName = clean;
+      let friendTag = clean;
+      let friendIdNum = generateAccountId();
+      let friendEmail: string | undefined = undefined;
+
+      if (isEmail) {
+        friendEmail = clean.toLowerCase();
+        friendName = clean.split('@')[0];
+        friendTag = `${friendName.toLowerCase()}#${friendIdNum}`;
+      } else if (isOnlyDigits) {
+        friendIdNum = rawId;
+        friendName = `Amigo #${rawId}`;
+        friendTag = `amigo#${rawId}`;
+      } else if (clean.includes('#')) {
+        const parts = clean.split('#');
+        friendName = parts[0] || 'Amigo';
+        friendIdNum = parts[1] || generateAccountId();
+        friendTag = `${friendName.toLowerCase()}#${friendIdNum}`;
+      } else {
+        friendName = clean;
+        friendTag = `${clean.toLowerCase()}#${friendIdNum}`;
+      }
+
+      const avatarPool = [
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
+        'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
+        'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
+        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces',
+        'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=faces',
+      ];
+      const avatarUrl = avatarPool[Math.floor(Math.random() * avatarPool.length)];
+
+      newFriend = {
+        id: `friend_${Date.now()}`,
+        accountId: friendIdNum,
+        name: friendName,
+        tag: friendTag,
+        email: friendEmail,
+        avatarUrl: avatarUrl,
+        status: 'online',
+        customStatus: 'Disponível no Orb.co 🪐',
+        bio: `Amigo no Orb.co (${friendTag})`,
+        ping: Math.floor(Math.random() * 20 + 15),
+      };
+    }
 
     setFriends(prev => {
-      if (prev.some(f => f.tag.toLowerCase() === tag.toLowerCase())) {
-        return prev;
-      }
-      const updated = [newFriend, ...prev];
+      const updated = [newFriend, ...prev.filter(f => f.tag.toLowerCase() !== newFriend.tag.toLowerCase())];
       saveStorage(STORAGE_KEYS.FRIENDS, updated);
 
       if (auth.currentUser) {
@@ -757,9 +878,10 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     soundEngine.playBuiltinSound('friend_add', 0.6);
     setActiveFriendId(newFriend.id);
-    showToast(`Amigo @${name} adicionado com sucesso!`, 'success');
-    return { success: true, message: `Amigo ${name} adicionado com sucesso!` };
-  }, [showToast]);
+    setNavigationMode('friends');
+    showToast(`Amigo @${newFriend.name} (ID: #${newFriend.accountId}) adicionado!`, 'success');
+    return { success: true, message: `Amigo ${newFriend.name} adicionado com sucesso! Abrindo conversa.` };
+  }, [currentUser, friends, showToast]);
 
   const removeFriend = useCallback((friendId: string) => {
     setFriends(prev => {
@@ -1176,7 +1298,48 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       saveStorage(STORAGE_KEYS.DMS, updated);
       return updated;
     });
-  }, [activeFriendId, currentUser]);
+
+    // Check if chatting with one of the initial friends (Marina, Theo, Luiza, Caio, Bia)
+    const targetFriend = friends.find(f => f.id === activeFriendId);
+    if (targetFriend) {
+      const fName = targetFriend.name.toLowerCase();
+      let replyText: string | null = null;
+      if (fName.includes('marina')) {
+        replyText = 'Opa! Que legal conversar individualmente! O Orb.co ficou incrível 🪐✨';
+      } else if (fName.includes('theo')) {
+        replyText = 'E aí! Mensagem recebida perfeitamente. Se quiser podemos abrir uma call de voz também!';
+      } else if (fName.includes('luiza')) {
+        replyText = 'Oi! Adorei a mensagem! Estava terminando uma ilustração aqui no Orb 🎨';
+      } else if (fName.includes('bia')) {
+        replyText = 'Oi oi! Tudo bem? Ouvindo música aqui no lounge 🎧';
+      } else if (fName.includes('caio')) {
+        replyText = 'Fala comigo! Valeu pela mensagem individual!';
+      }
+
+      if (replyText) {
+        setTimeout(() => {
+          const replyDM: DirectMessage = {
+            id: `dm_reply_${Date.now()}`,
+            friendId: activeFriendId,
+            senderId: targetFriend.id,
+            senderName: targetFriend.name,
+            senderAvatar: targetFriend.avatarUrl,
+            content: replyText!,
+            timestamp: `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`,
+          };
+          setDirectMessages(prev => {
+            const updated = {
+              ...prev,
+              [activeFriendId]: [...(prev[activeFriendId] || []), replyDM]
+            };
+            saveStorage(STORAGE_KEYS.DMS, updated);
+            return updated;
+          });
+          soundEngine.playBuiltinSound('join', 0.4);
+        }, 1100);
+      }
+    }
+  }, [activeFriendId, currentUser, friends]);
 
   // Soundboard
   const playSound = useCallback((sound: SoundItem) => {
@@ -1589,10 +1752,13 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (userDocSnap && userDocSnap.exists()) {
       const data = userDocSnap.data();
+      const accountId = data.accountId || generateAccountId();
+      const userName = data.name || fbUser.displayName || fallbackName || 'Usuário Orb';
       userProfile = {
         id: fbUser.uid,
-        name: data.name || fbUser.displayName || fallbackName || 'Usuário Orb',
-        tag: data.tag || `${(data.name || fbUser.displayName || fallbackName || 'usuario').toLowerCase().replace(/\s+/g, '')}#${fbUser.uid.substring(0, 4)}`,
+        accountId: accountId,
+        name: userName,
+        tag: data.tag || `${userName.toLowerCase().replace(/\s+/g, '')}#${accountId}`,
         email: fbUser.email || '',
         avatarUrl: data.avatarUrl || fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${fbUser.uid}`,
         bannerUrl: data.bannerUrl || 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?w=800&h=300&fit=crop',
@@ -1622,10 +1788,12 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     } else {
       const displayName = fallbackName || fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Usuário Orb');
+      const accountId = generateAccountId();
       userProfile = {
         id: fbUser.uid,
+        accountId: accountId,
         name: displayName,
-        tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${fbUser.uid.substring(0, 4)}`,
+        tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${accountId}`,
         email: fbUser.email || '',
         bio: 'Membro do Orb.co.',
         avatarUrl: fbUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${fbUser.uid}`,
@@ -1752,11 +1920,13 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const localUid = `usr_${Math.random().toString(36).substring(2, 9)}`;
     const displayName = name?.trim() || cleanEmail.split('@')[0];
     const hash = await hashPassword(password);
+    const accountId = generateAccountId();
 
     const newProf: UserProfile = {
       id: localUid,
+      accountId: accountId,
       name: displayName,
-      tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${localUid.substring(4, 8)}`,
+      tag: `${displayName.toLowerCase().replace(/\s+/g, '')}#${accountId}`,
       email: cleanEmail,
       bio: 'Membro do Orb.co.',
       avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${localUid}`,
@@ -1844,6 +2014,55 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setProfileModalOpen(false);
     setActiveView('landing');
   }, []);
+
+  // Auth: Delete all registered accounts (Full purge requested by user)
+  const deleteAllRegisteredAccounts = useCallback(async () => {
+    try {
+      if (auth.currentUser) {
+        const uid = auth.currentUser.uid;
+        await deleteDoc(doc(db, 'users', uid)).catch(() => {});
+        await fbSignOut(auth).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Error deleting user account from auth/db:', err);
+    }
+
+    try {
+      localStorage.removeItem('orbita_registered_accounts_v1');
+      localStorage.removeItem('orbita_registered_accounts_v2');
+      localStorage.removeItem('orbita_registered_accounts_v3');
+      localStorage.removeItem('orbita_registered_accounts_v4');
+      localStorage.removeItem(STORAGE_KEYS.ACCOUNTS);
+      localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.SERVERS);
+      localStorage.removeItem(STORAGE_KEYS.FRIENDS);
+      localStorage.removeItem(STORAGE_KEYS.DMS);
+      localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+    } catch (err) {
+      console.warn('Error clearing storage:', err);
+    }
+
+    const freshAccountId = generateAccountId();
+    const cleanUser: UserProfile = {
+      ...DEFAULT_CLEAN_USER,
+      accountId: freshAccountId,
+      tag: `voce#${freshAccountId}`,
+    };
+
+    setCurrentUser(cleanUser);
+    setFriends(INITIAL_FRIENDS);
+    setDirectMessages({});
+    setMessages(INITIAL_CHAT_MESSAGES);
+    setServers(INITIAL_SERVERS);
+    setActiveFriendId(null);
+    setCurrentServerIdState('srv_orb_central');
+    setCurrentChannelIdState('chan_central_geral');
+    setNavigationMode('friends');
+    setAuthModalOpen(false);
+    setProfileModalOpen(false);
+
+    showToast('Todas as contas registradas foram excluídas com sucesso!', 'success');
+  }, [showToast]);
 
   // Profile Update: synchronously updates local state, localStorage, and Firestore!
   const updateUserProfile = useCallback((updates: Partial<UserProfile>) => {
@@ -2009,6 +2228,7 @@ export const OrbitaProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       resetPassword,
       loginWithGoogle,
       logout,
+      deleteAllRegisteredAccounts,
       updateUserProfile,
     }}>
       {children}

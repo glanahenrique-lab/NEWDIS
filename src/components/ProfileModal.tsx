@@ -31,7 +31,9 @@ export const ProfileModal: React.FC = () => {
     customBgColor,
     setCustomBgColor,
     themeMode, 
-    toggleTheme
+    toggleTheme,
+    deleteAllRegisteredAccounts,
+    showToast
   } = useOrbita();
 
   const [activeTab, setActiveTab] = useState<'perfil' | 'privacidade' | 'conexoes' | 'aparencia'>('perfil');
@@ -223,6 +225,19 @@ export const ProfileModal: React.FC = () => {
                 <LogOut className="w-4 h-4" />
                 <span>Desconectar Conta</span>
               </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (window.confirm('Tem certeza que deseja excluir todas as contas registradas? Todos os perfis e dados serão limpos.')) {
+                    await deleteAllRegisteredAccounts();
+                  }
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-semibold text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/10 transition-colors text-left cursor-pointer"
+                title="Excluir todas as contas cadastradas"
+              >
+                <span>🗑️ Excluir todas as contas</span>
+              </button>
             </div>
           </div>
 
@@ -300,6 +315,32 @@ export const ProfileModal: React.FC = () => {
                       Carregar Foto
                     </button>
                   </div>
+                </div>
+
+                {/* User ID & Tag Info Bar with Copy button */}
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <span className="block text-[10px] uppercase font-bold text-slate-400">ID e Tag Gerados Automaticamente</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs font-mono font-bold text-cyan-300">
+                        ID: #{currentUser.accountId || currentUser.tag?.split('#')[1] || '1001'}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        ({currentUser.tag || `${currentUser.name}#${currentUser.accountId || '1001'}`})
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tagToCopy = currentUser.tag || `${currentUser.name}#${currentUser.accountId || '1001'}`;
+                      navigator.clipboard.writeText(tagToCopy);
+                      showToast(`Tag ${tagToCopy} copiada! Compartilhe com amigos.`, 'success');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-all cursor-pointer shrink-0"
+                  >
+                    Copiar Tag
+                  </button>
                 </div>
 
                 {/* Nickname & Bio */}
@@ -636,7 +677,7 @@ export const ProfileModal: React.FC = () => {
                     {nick || 'Usuário'}
                   </h4>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono">
-                    #0001
+                    #{currentUser.accountId || currentUser.tag?.split('#')[1] || '1001'}
                   </span>
                 </div>
 

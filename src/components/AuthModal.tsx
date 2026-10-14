@@ -23,7 +23,8 @@ export const AuthModal: React.FC = () => {
     loginWithEmail, 
     registerWithEmail, 
     resetPassword,
-    loginWithGoogle 
+    loginWithGoogle,
+    deleteAllRegisteredAccounts
   } = useOrbita();
 
   const [tab, setTab] = useState<'login' | 'register' | 'forgot'>('login');
@@ -318,6 +319,13 @@ export const AuthModal: React.FC = () => {
         {/* 2. REGISTER FORM */}
         {tab === 'register' && (
           <form onSubmit={handleRegisterSubmit} className="space-y-3.5 text-left">
+            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-[11px] text-cyan-300 flex items-start gap-2">
+              <Sparkles className="w-4 h-4 shrink-0 text-cyan-400 mt-0.5" />
+              <span>
+                <strong>ID Automático:</strong> Um ID exclusivo será gerado para sua conta. Amigos poderão te adicionar pelo seu ID, Tag ou E-mail!
+              </span>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                 Nome de Usuário / Nick
@@ -533,6 +541,22 @@ export const AuthModal: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Action to Delete all registered accounts (Requested by user: "Exclua todas as contas registradas") */}
+        <div className="mt-4 pt-3 border-t border-white/5 flex flex-col items-center">
+          <button
+            type="button"
+            onClick={async () => {
+              if (window.confirm('Tem certeza que deseja excluir todas as contas registradas? Todos os perfis, contas e dados locais serão completamente apagados.')) {
+                await deleteAllRegisteredAccounts();
+              }
+            }}
+            className="text-[11px] text-rose-400/80 hover:text-rose-300 hover:underline flex items-center gap-1.5 cursor-pointer py-1 transition-all"
+            title="Excluir todas as contas registradas e limpar dados locais"
+          >
+            <span>🗑️ Excluir todas as contas registradas</span>
+          </button>
+        </div>
       </div>
     </div>
   );

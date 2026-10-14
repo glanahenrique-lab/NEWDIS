@@ -2,8 +2,9 @@ import { ServerData, UserProfile, ChatMessage, Friend } from '../types';
 
 export const DEFAULT_CLEAN_USER: UserProfile = {
   id: 'user_main',
+  accountId: '1001',
   name: 'Você',
-  tag: 'voce#0001',
+  tag: 'voce#1001',
   email: 'usuario@orb.co',
   bio: 'Novo usuário no Orb.co. Crie um servidor ou adicione amigos!',
   avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=faces',
@@ -185,8 +186,10 @@ export const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
 export const INITIAL_FRIENDS: Friend[] = [
   {
     id: 'friend_marina',
+    accountId: '1042',
     name: 'Marina',
     tag: 'marina#1042',
+    email: 'marina@orb.co',
     avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop&crop=faces',
     status: 'online',
     customStatus: 'Viu a nova interface? 👀',
@@ -195,8 +198,10 @@ export const INITIAL_FRIENDS: Friend[] = [
   },
   {
     id: 'friend_theo',
+    accountId: '2914',
     name: 'Theo',
     tag: 'theo#2914',
+    email: 'theo@orb.co',
     avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=faces',
     status: 'online',
     customStatus: 'Bora call mais tarde?',
@@ -205,8 +210,10 @@ export const INITIAL_FRIENDS: Friend[] = [
   },
   {
     id: 'friend_luiza',
+    accountId: '5819',
     name: 'Luiza',
     tag: 'luiza#5819',
+    email: 'luiza@orb.co',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
     status: 'idle',
     customStatus: 'Diga oi!',
@@ -215,8 +222,10 @@ export const INITIAL_FRIENDS: Friend[] = [
   },
   {
     id: 'friend_caio',
+    accountId: '7721',
     name: 'Caio',
     tag: 'caio#7721',
+    email: 'caio@orb.co',
     avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop&crop=faces',
     status: 'offline',
     customStatus: 'Diga oi!',
@@ -225,8 +234,10 @@ export const INITIAL_FRIENDS: Friend[] = [
   },
   {
     id: 'friend_bia',
+    accountId: '3390',
     name: 'Bia',
     tag: 'bia#3390',
+    email: 'bia@orb.co',
     avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop&crop=faces',
     status: 'online',
     customStatus: 'Diga oi!',

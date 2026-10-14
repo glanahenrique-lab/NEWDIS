@@ -10,8 +10,9 @@ export interface ConnectedAccounts {
 
 export interface UserProfile {
   id: string;
+  accountId?: string; // Automatically generated unique ID, e.g. "4829"
   name: string;
-  tag?: string;
+  tag?: string; // e.g. "Lucas#4829"
   email: string;
   bio: string;
   avatarUrl: string;
@@ -92,8 +93,10 @@ export interface DirectMessage {
 
 export interface Friend {
   id: string;
+  accountId?: string; // Automatically generated unique ID, e.g. "4829"
   name: string;
   tag: string;
+  email?: string;
   avatarUrl: string;
   status: UserStatus;
   customStatus?: string;

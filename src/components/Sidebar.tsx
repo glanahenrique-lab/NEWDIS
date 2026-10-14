@@ -26,7 +26,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Phone,
-  Compass
+  Compass,
+  Copy
 } from 'lucide-react';
 import { Channel, UserProfile } from '../types';
 import { UserContextMenu } from './UserContextMenu';
@@ -69,7 +70,8 @@ export const Sidebar: React.FC = () => {
     leaveServer,
     setInviteModalOpen,
     openServerModal,
-    callFriend
+    callFriend,
+    showToast
   } = useOrbita();
 
   const [contextMenu, setContextMenu] = useState<{
@@ -581,8 +583,11 @@ export const Sidebar: React.FC = () => {
                                 }`}></span>
                               </div>
                               <div className="truncate flex-1">
-                                <div className="truncate text-slate-200 group-hover:text-white font-semibold">{friend.name}</div>
-                                <div className="text-[10px] text-slate-500 truncate">{friend.customStatus || friend.tag}</div>
+                                <div className="truncate text-slate-200 group-hover:text-white font-semibold flex items-center gap-1.5">
+                                  <span>{friend.name}</span>
+                                  <span className="text-[10px] text-cyan-400 font-mono font-normal">#{friend.accountId || friend.tag.split('#')[1]}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 truncate">{friend.customStatus || friend.email || friend.tag}</div>
                               </div>
                             </div>
 
@@ -700,20 +705,39 @@ export const Sidebar: React.FC = () => {
                 <div className="text-xs font-bold text-white group-hover:text-cyan-300 transition-colors truncate">
                   {currentUser.name}
                 </div>
-                <div className="text-[10px] text-slate-400 truncate">
-                  {currentUser.tag || 'Online'}
+                <div className="text-[10px] text-slate-400 font-mono truncate flex items-center gap-1">
+                  <span className="text-cyan-400 font-semibold">ID: #{currentUser.accountId || currentUser.tag?.split('#')[1] || '1001'}</span>
+                  <span>•</span>
+                  <span className="truncate">{currentUser.tag || 'Online'}</span>
                 </div>
               </div>
             </div>
 
-            {/* Gear opens settings (where user can customize or log out) */}
-            <button
-              onClick={() => setProfileModalOpen(true)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-              title="Configurações do Usuário"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-0.5">
+              {/* Quick Copy Tag/ID button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const tagToCopy = currentUser.tag || `${currentUser.name}#${currentUser.accountId || '1001'}`;
+                  navigator.clipboard.writeText(tagToCopy);
+                  showToast(`Tag ${tagToCopy} copiada! Compartilhe para te adicionarem.`, 'success');
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-cyan-300 hover:bg-white/5 transition-colors cursor-pointer"
+                title="Copiar meu ID e Tag para amigos me adicionarem"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Gear opens settings (where user can customize or log out) */}
+              <button
+                onClick={() => setProfileModalOpen(true)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                title="Configurações do Usuário"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
